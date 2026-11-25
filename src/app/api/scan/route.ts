@@ -1,19 +1,21 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { db } from '@/lib/db';
-import { resolveFlavor } from '@/lib/rewards/catalog';
 import { cleanGs1String, parseChestnyZnak } from '@/lib/rewards/codeParser';
 import {
   buildAppState,
   ensurePlayer,
+  getLines,
   getQuestStates,
   grantPendingChests,
   isValidPlayerId,
+  resolveFlavor,
 } from '@/lib/rewards/server';
 import type { ScanResponse } from '@/lib/rewards/types';
 
 /**
  * POST /api/scan — проверка кода Честного знака и зачёт банки.
- * Один код участвует в акции один раз (глобальная уникальность).
+ * Проверки: формат → выбывший из оборота → уже использован.
+ * Каждый успешный скан начисляет +1 спин колеса.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -46,7 +48,16 @@ export async function POST(req: NextRequest) {
 
     const code = cleanGs1String(body.code);
 
-    // Код уже participating в акции — «выбывший» код.
+    // Код выведен из оборота (утилизация/просрочка) — скан отклоняется
+    const blocked = await db.blockedCode.findUnique({ where: { serial: parsed.serial } });
+    if (blocked) {
+      return NextResponse.json<ScanResponse>(
+        { ok: false, error: 'CODE_RETIRED' },
+        { status: 403 },
+      );
+    }
+
+    // Код уже участвует в акции
     const existing = await db.scan.findUnique({ where: { code } });
     if (existing) {
       return NextResponse.json<ScanResponse>(
@@ -55,7 +66,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const flavor = resolveFlavor(parsed.gtin);
+    const lines = await getLines();
+    const flavor = resolveFlavor(parsed.gtin, lines);
     await ensurePlayer(playerId);
 
     const before = await getQuestStates(playerId);
@@ -72,16 +84,24 @@ export async function POST(req: NextRequest) {
         },
       });
     } catch {
-      // Гонка уникальности: код уже кто-то отсканировал.
+      // Гонка уникальности: код уже кто-то отсканировал
       return NextResponse.json<ScanResponse>(
         { ok: false, error: 'ALREADY_USED' },
         { status: 409 },
       );
     }
 
+    // Каждый скан = один спин колеса
+    await db.player.update({
+      where: { id: playerId },
+      data: { spins: { increment: 1 } },
+    });
+
     const states = await getQuestStates(playerId);
     const newChests = await grantPendingChests(playerId, states);
     const state = await buildAppState(playerId);
+
+    const line = lines.find((l) => l.key === flavor.lineKey);
 
     const progressedQuestIds = states
       .filter((after) => {
@@ -93,7 +113,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json<ScanResponse>({
       ok: true,
       flavorName: flavor.name,
-      lineName: flavor.lineName,
+      lineName: line?.name ?? flavor.lineKey,
+      spinsGained: 1,
       newChestIds: newChests.map((c) => c.id),
       progressedQuestIds,
       state,

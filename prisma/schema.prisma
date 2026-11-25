@@ -1,4 +1,6 @@
-// Prisma-схема промо-механики «Сканируй → задания → сундуки → подарки».
+// Промо-механика «Сканируй → задания → сундуки → колесо → подарки».
+// Квесты, линейки вкусов, шаблоны призов, колесо и раффлы хранятся в БД —
+// новые задания и розыгрыши добавляются записью в таблицу (или из админ-панели).
 
 generator client {
   provider = "prisma-client-js"
@@ -9,18 +11,28 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/* ============ ИГРОК ============ */
+
 // Анонимный игрок (deviceId из localStorage / Telegram initData в будущем).
 model Player {
   id        String   @id
   createdAt DateTime @default(now())
 
-  scans  Scan[]
-  chests Chest[]
-  prizes PrizeRecord[]
+  // Колесо удачи
+  spins       Int @default(0) // обычные спины (1 скан = 1 спин)
+  goldenSpins Int @default(0) // золотые спины: эффекты x2, расходуются первыми
+  jackpotFill Int @default(0) // прогресс джекпота, 0..100 (100 = гарантия)
+  missStreak  Int @default(0) // pity: подряд идущих промахов (2 = следующий без промаха)
+
+  scans         Scan[]
+  chests        Chest[]
+  prizes        PrizeRecord[]
+  raffleEntries RaffleEntry[]
 }
 
-// Один отсканированный код Честного знака. Уникален глобально:
-// один код участвует в акции один раз (проверка «выбывший или нет»).
+/* ============ КОДЫ ЧЕСТНОГО ЗНАКА ============ */
+
+// Один отсканированный код. Уникален глобально: код участвует в акции один раз.
 model Scan {
   id        Int      @id @default(autoincrement())
   playerId  String
@@ -35,28 +47,39 @@ model Scan {
   @@index([playerId])
 }
 
+// Коды, выведенные из оборота (утилизация/просрочка) — скан отклоняется.
+model BlockedCode {
+  serial String @id
+  reason String
+}
+
+/* ============ СУНДУКИ ============ */
+
 // Сундук, выданный за выполненное задание (или из демо-панели).
 model Chest {
-  id            String      @id @default(cuid())
+  id            String       @id @default(cuid())
   playerId      String
-  player        Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  player        Player       @relation(fields: [playerId], references: [id], onDelete: Cascade)
   tier          String // BRONZE | SILVER | GOLD
   sourceQuestId String
-  status        String      @default("UNOPENED") // UNOPENED | OPENED
-  prizeId       String?     @unique
+  status        String       @default("UNOPENED") // UNOPENED | OPENED
+  prizeId       String?      @unique
   prize         PrizeRecord? @relation(fields: [prizeId], references: [id])
-  createdAt     DateTime    @default(now())
+  createdAt     DateTime     @default(now())
   openedAt      DateTime?
 
   @@index([playerId])
 }
 
-// Выпавший из сундука подарок (снапшот шаблона на момент выдачи).
+/* ============ ПРИЗЫ ============ */
+
+// Выпавший подарок (снапшот шаблона на момент выдачи).
 model PrizeRecord {
   id           String   @id @default(cuid())
   playerId     String
   player       Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
   templateId   String
+  source       String   @default("CHEST") // CHEST | WHEEL | JACKPOT
   tier         String
   title        String
   description  String
@@ -73,4 +96,100 @@ model PrizeRecord {
   chests Chest[]
 
   @@index([playerId])
+}
+
+// Шаблоны подарков. Пулы: сундуки (source=CHEST, tier=уровень),
+// колесо (source=WHEEL) и джекпот (source=JACKPOT).
+model PrizeTemplate {
+  id           String  @id
+  source       String  @default("CHEST")
+  tier         String
+  weight       Int
+  title        String
+  description  String
+  valueRub     Int?
+  partnerName  String
+  deliveryType String // PROMO_CODE | DEEP_LINK | SBP_PAYOUT
+  instructions String  @default("[]") // JSON-массив строк
+  link         String  @default("")
+  linkLabel    String  @default("")
+}
+
+/* ============ КАТАЛОГ: ЛИНЕЙКИ И ВКУСЫ ============ */
+
+model FlavorLine {
+  key       String  @id
+  name      String
+  subtitle  String
+  sortOrder Int     @default(0)
+  flavors   Flavor[]
+  quests    Quest[]
+}
+
+model Flavor {
+  key     String     @id
+  name    String
+  gtin    String     @unique
+  lineKey String
+  line    FlavorLine @relation(fields: [lineKey], references: [key])
+}
+
+/* ============ ЗАДАНИЯ ============ */
+
+// Гибкая структура: type=SCANS — N сканов любых банок;
+// type=FLAVORS + lineKey — собрать все вкусы линейки;
+// type=FLAVORS без lineKey — N уникальных вкусов всего каталога.
+// Новые квесты добавляются записью в таблицу (или из админ-панели).
+model Quest {
+  id         String      @id
+  title      String
+  desc       String
+  icon       String // scan | cup | disc | flag
+  type       String // SCANS | FLAVORS
+  lineKey    String?
+  line       FlavorLine? @relation(fields: [lineKey], references: [key])
+  target     Int
+  rewardTier String // BRONZE | SILVER | GOLD
+  active     Boolean     @default(true)
+  sortOrder  Int         @default(0)
+}
+
+/* ============ КОЛЕСО ============ */
+
+// Сегменты колеса. kind: JACKPOT | EMPTY | SPIN | GOLDEN_SPIN | TICKET | FILL | PRIZE.
+// value — сила эффекта (+1/+2 спина, +N билетов, +N к джекпоту).
+model WheelSegment {
+  id       String  @id
+  kind     String
+  labelTop String
+  labelSub String
+  value    Int     @default(0)
+  weight   Int
+  color    String
+  order    Int     @unique
+  active   Boolean @default(true)
+}
+
+/* ============ РАФФЛЫ (РОЗЫГРЫШИ) ============ */
+
+model Raffle {
+  id        String        @id @default(cuid())
+  title     String
+  prize     String
+  endsAt    DateTime
+  active    Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  entries   RaffleEntry[]
+}
+
+model RaffleEntry {
+  id        String   @id @default(cuid())
+  raffleId  String
+  raffle    Raffle   @relation(fields: [raffleId], references: [id], onDelete: Cascade)
+  playerId  String
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  tickets   Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@unique([raffleId, playerId])
 }

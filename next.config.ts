@@ -7,6 +7,8 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
+  // Плавающий индикатор dev-инструментов мешает нижней навигации — выключаем
+  devIndicators: false,
 };
 
 export default nextConfig;

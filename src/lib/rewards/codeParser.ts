@@ -35,6 +35,11 @@ export function maskCode(raw: string): string {
  * и уникальным серийником (каждый демо-скан — новая «банка»).
  */
 export function buildDemoCode(gtin: string): string {
-  const serial = `HQD${Date.now().toString().slice(-10)}`;
+  const serial = `HQD${Date.now().toString().slice(-10)}${Math.floor(Math.random() * 90 + 10)}`;
   return `01${gtin}21${serial}`;
+}
+
+/** Демо-код выбывшей из оборота банки (для показа отказа скана). */
+export function buildRetiredDemoCode(gtin: string): string {
+  return `01${gtin}21OUT0001`;
 }

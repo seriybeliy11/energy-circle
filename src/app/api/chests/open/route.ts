@@ -1,58 +1,9 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { db } from '@/lib/db';
-import { generatePromoCode, pickPrizeTemplate } from '@/lib/rewards/catalog';
-import { buildAppState, isValidPlayerId } from '@/lib/rewards/server';
-import type { OpenChestResponse, PrizeState } from '@/lib/rewards/types';
+import { buildAppState, createPrizeFromTemplate, isValidPlayerId, toPrizeState } from '@/lib/rewards/server';
+import type { OpenChestResponse } from '@/lib/rewards/types';
 
-const PRIZE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 дней
-
-function toPrizeState(prize: Awaited<ReturnType<typeof createPrize>>): PrizeState {
-  let instructions: string[] = [];
-  try {
-    const parsed = JSON.parse(prize.instructions);
-    if (Array.isArray(parsed)) instructions = parsed.filter((s) => typeof s === 'string');
-  } catch {
-    instructions = [];
-  }
-  return {
-    id: prize.id,
-    tier: prize.tier as PrizeState['tier'],
-    title: prize.title,
-    description: prize.description,
-    valueRub: prize.valueRub ?? null,
-    partnerName: prize.partnerName,
-    deliveryType: prize.deliveryType as PrizeState['deliveryType'],
-    promoCode: prize.promoCode,
-    instructions,
-    link: prize.link,
-    linkLabel: prize.linkLabel,
-    expiresAt: prize.expiresAt.toISOString(),
-    createdAt: prize.createdAt.toISOString(),
-  };
-}
-
-async function createPrize(playerId: string, tier: string) {
-  const tpl = pickPrizeTemplate(tier as 'BRONZE' | 'SILVER' | 'GOLD');
-  return db.prizeRecord.create({
-    data: {
-      playerId,
-      templateId: tpl.id,
-      tier,
-      title: tpl.title,
-      description: tpl.description,
-      valueRub: tpl.valueRub ?? null,
-      partnerName: tpl.partnerName,
-      deliveryType: tpl.deliveryType,
-      promoCode: tpl.deliveryType === 'PROMO_CODE' ? generatePromoCode() : null,
-      instructions: JSON.stringify(tpl.instructions),
-      link: tpl.link,
-      linkLabel: tpl.linkLabel,
-      expiresAt: new Date(Date.now() + PRIZE_TTL_MS),
-    },
-  });
-}
-
-/** POST /api/chests/open — открыть сундук и получить подарок. */
+/** POST /api/chests/open — открыть сундук и получить подарок из пула уровня. */
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => null)) as {
@@ -89,7 +40,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const prize = await createPrize(playerId, chest.tier);
+    const prize = await createPrizeFromTemplate(playerId, 'CHEST', chest.tier);
 
     await db.chest.update({
       where: { id: chest.id },

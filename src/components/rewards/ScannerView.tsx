@@ -1,15 +1,15 @@
 'use client';
 
 // Экран сканирования: камера (DataMatrix через @zxing/browser), ручной ввод и демо-скан.
+// Каждый успешный скан: +1 спин колеса + прогресс заданий.
 
 import { useEffect, useRef, useState } from 'react';
 import type { IScannerControls } from '@zxing/browser';
-import { CameraOff, Dices, FlaskConical, Keyboard, Loader2, ScanLine, TriangleAlert } from 'lucide-react';
-import { FLAVORS, LINES } from '@/lib/rewards/catalog';
-import { buildDemoCode } from '@/lib/rewards/codeParser';
+import { CameraOff, Dices, FlaskConical, Keyboard, Loader2, ScanLine, ShieldX, TriangleAlert } from 'lucide-react';
+import { buildDemoCode, buildRetiredDemoCode } from '@/lib/rewards/codeParser';
 import { useRewardsStore } from '@/store/useRewardsStore';
 import { haptic } from '@/utils/telegram';
-import { TopBar } from './bits';
+import { sound } from '@/utils/sound';
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from '@/components/ui/drawer';
 
 type CamStatus = 'starting' | 'active' | 'denied';
@@ -109,7 +109,7 @@ function CameraScanner({
           <p className="text-[12px] leading-relaxed text-white/55">
             {status === 'starting'
               ? 'Запрашиваем доступ к камере…'
-              : 'Камера недоступна. Разреши доступ в настройках браузера или введи код вручную'}
+              : 'Камера недоступна — введи код вручную'}
           </p>
         </div>
       )}
@@ -130,11 +130,11 @@ function CameraScanner({
 }
 
 export function ScannerView() {
-  const go = useRewardsStore((s) => s.go);
   const submitCode = useRewardsStore((s) => s.submitCode);
   const scanBusy = useRewardsStore((s) => s.scanBusy);
   const scanError = useRewardsStore((s) => s.scanError);
   const scanSuccess = useRewardsStore((s) => s.scanSuccess);
+  const state = useRewardsStore((s) => s.state);
 
   const [manualOpen, setManualOpen] = useState(false);
   const [demoOpen, setDemoOpen] = useState(false);
@@ -143,6 +143,7 @@ export function ScannerView() {
   const handleCode = async (code: string) => {
     const ok = await submitCode(code);
     haptic(ok ? 'success' : 'error');
+    if (ok) sound.scan();
   };
 
   const submitManual = async () => {
@@ -153,21 +154,27 @@ export function ScannerView() {
     await handleCode(value);
   };
 
-  const pickDemoFlavor = async (flavorKey: string | null) => {
+  const pickDemoFlavor = async (gtin: string | null) => {
     setDemoOpen(false);
-    const flavor =
-      flavorKey === null
-        ? FLAVORS[Math.floor(Math.random() * FLAVORS.length)]
-        : FLAVORS.find((f) => f.key === flavorKey) ?? FLAVORS[0];
-    await handleCode(buildDemoCode(flavor.gtin));
+    const flavors = state?.lines.flatMap((l) => l.flavors) ?? [];
+    const gtinToUse =
+      gtin ?? (flavors.length > 0 ? flavors[Math.floor(Math.random() * flavors.length)].gtin : null);
+    if (!gtinToUse) return;
+    await handleCode(buildDemoCode(gtinToUse));
+  };
+
+  const scanRetired = async () => {
+    setDemoOpen(false);
+    const flavors = state?.lines.flatMap((l) => l.flavors) ?? [];
+    const gtin = flavors.length > 0 ? flavors[Math.floor(Math.random() * flavors.length)].gtin : null;
+    if (!gtin) return;
+    await handleCode(buildRetiredDemoCode(gtin));
   };
 
   const cameraActive = !scanBusy && !scanSuccess && !manualOpen && !demoOpen;
 
   return (
     <div className="flex flex-col gap-4">
-      <TopBar title="Сканирование кода" onBack={() => go('home')} />
-
       <div className="glass rounded-[30px] p-2.5">
         <CameraScanner onDetect={(text) => void handleCode(text)} active={cameraActive} />
       </div>
@@ -182,11 +189,6 @@ export function ScannerView() {
         </div>
       )}
 
-      <p className="px-1 text-center text-[12px] leading-relaxed text-slate-400">
-        Квадратный код <span className="font-semibold text-slate-600">Честный знак</span> напечатан
-        на дне банки. Каждый код засчитывается один раз.
-      </p>
-
       <div className="grid grid-cols-2 gap-2.5">
         <button
           type="button"
@@ -194,7 +196,7 @@ export function ScannerView() {
           className="press glass-soft flex h-12 items-center justify-center gap-2 rounded-2xl text-[13px] font-semibold text-slate-700"
         >
           <Keyboard size={16} />
-          Ввести вручную
+          Ввести код
         </button>
         <button
           type="button"
@@ -211,10 +213,10 @@ export function ScannerView() {
         <DrawerContent className="rounded-t-[28px]">
           <div className="mx-auto w-full max-w-[430px] px-5 pb-8 pt-3">
             <DrawerTitle className="text-[16px] font-semibold text-slate-900">
-              Ввести код вручную
+              Ввести код
             </DrawerTitle>
             <DrawerDescription className="text-[12.5px] text-slate-400">
-              Код на дне банки под логотипом Честного знака, начинается с 01
+              Код на дне банки, начинается с 01
             </DrawerDescription>
             <input
               value={manualValue}
@@ -222,7 +224,7 @@ export function ScannerView() {
               onKeyDown={(e) => {
                 if (e.key === 'Enter') void submitManual();
               }}
-              placeholder="01046700330011921HQD…"
+              placeholder="010467003300011921…"
               inputMode="text"
               autoCapitalize="characters"
               autoComplete="off"
@@ -246,10 +248,10 @@ export function ScannerView() {
         <DrawerContent className="rounded-t-[28px]">
           <div className="mx-auto max-h-[70vh] w-full max-w-[430px] overflow-y-auto scroll-slim px-5 pb-8 pt-3">
             <DrawerTitle className="text-[16px] font-semibold text-slate-900">
-              Демо-скан без банки
+              Демо-скан
             </DrawerTitle>
             <DrawerDescription className="text-[12.5px] text-slate-400">
-              Выбери вкус — приложение сгенерирует валидный код и пройдёт весь сценарий
+              Выбери вкус — приложение сгенерирует валидный код
             </DrawerDescription>
 
             <button
@@ -258,27 +260,20 @@ export function ScannerView() {
               className="press mt-4 flex w-full items-center gap-3 rounded-2xl bg-slate-900 px-4 py-3.5 text-left"
             >
               <Dices size={18} className="shrink-0 text-white/80" />
-              <span>
-                <span className="block text-[13.5px] font-semibold text-white">
-                  Случайный вкус
-                </span>
-                <span className="block text-[11.5px] text-white/55">
-                  Любая банка из каталога
-                </span>
-              </span>
+              <span className="text-[13.5px] font-semibold text-white">Случайный вкус</span>
             </button>
 
-            {LINES.map((line) => (
+            {state?.lines.map((line) => (
               <div key={line.key} className="mt-4">
                 <p className="px-1 text-[10.5px] font-bold uppercase tracking-[0.18em] text-slate-400">
                   {line.name}
                 </p>
                 <div className="mt-1.5 space-y-1.5">
-                  {FLAVORS.filter((f) => f.lineKey === line.key).map((f) => (
+                  {line.flavors.map((f) => (
                     <button
                       key={f.key}
                       type="button"
-                      onClick={() => void pickDemoFlavor(f.key)}
+                      onClick={() => void pickDemoFlavor(f.gtin)}
                       className="press glass-soft flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left"
                     >
                       <span className="text-[13.5px] font-medium text-slate-800">{f.name}</span>
@@ -288,6 +283,17 @@ export function ScannerView() {
                 </div>
               </div>
             ))}
+
+            <button
+              type="button"
+              onClick={() => void scanRetired()}
+              className="press mt-5 flex w-full items-center gap-3 rounded-2xl border border-red-200/80 bg-red-50/60 px-4 py-3 text-left"
+            >
+              <ShieldX size={17} className="shrink-0 text-red-400" />
+              <span className="text-[13px] font-semibold text-red-600">
+                Выбывший из оборота код
+              </span>
+            </button>
           </div>
         </DrawerContent>
       </Drawer>

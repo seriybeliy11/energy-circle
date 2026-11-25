@@ -188,6 +188,40 @@
   background: #059669;
 }
 
+/* ============ ДЖЕКПОТ-БАР ============ */
+
+.jackpot-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f2b632, #e39b1d);
+  position: relative;
+  overflow: hidden;
+  transition: width 0.6s cubic-bezier(0.22, 0.88, 0.32, 1);
+}
+.jackpot-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.55) 50%, transparent 70%);
+  transform: translateX(-100%);
+  animation: jackpot-shimmer 2.2s ease-in-out infinite;
+}
+@keyframes jackpot-shimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* Пульс карточки, когда джекпот гарантирован */
+.jackpot-ready {
+  animation: jackpot-pulse 1.15s ease-in-out infinite;
+}
+@keyframes jackpot-pulse {
+  50% {
+    opacity: 0.6;
+  }
+}
+
 /* Тонкий скроллбар */
 .scroll-slim {
   scrollbar-width: thin;

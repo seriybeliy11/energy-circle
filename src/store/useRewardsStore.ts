@@ -1,26 +1,28 @@
 'use client';
 
 // Глобальное состояние приложения: анонимный игрок, серверное состояние,
-// навигация по экранам и результаты действий.
+// навигация по вкладкам и результаты действий.
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type {
+  AdminResponse,
   ApiErrorCode,
   AppState,
+  OpenChestResponse,
   PrizeState,
   ScanResponse,
-  ScanResponse as ScanResp,
+  SpinResponse,
   StateResponse,
 } from '@/lib/rewards/types';
-import type { OpenChestResponse } from '@/lib/rewards/types';
 import { initTelegram } from '@/utils/telegram';
 
-export type View = 'home' | 'scan' | 'chest' | 'prizes';
+export type View = 'scan' | 'quests' | 'wheel' | 'prizes' | 'chest';
 
 export interface ScanSuccessInfo {
   flavorName: string;
   lineName: string;
+  spinsGained: number;
   newChestIds: string[];
   progressedQuestIds: string[];
 }
@@ -29,10 +31,14 @@ export const ERROR_TEXT: Record<ApiErrorCode, string> = {
   BAD_REQUEST: 'Что-то не так с запросом. Попробуй ещё раз',
   INVALID_CODE: 'Это не похоже на код Честного знака. Проверь код на дне банки',
   ALREADY_USED: 'Этот код уже участвует в акции. Отсканируй другую банку',
+  CODE_RETIRED: 'Код выведен из оборота. Отсканируй другую банку',
+  NO_SPINS: 'Спинов нет — отсканируй банку, чтобы крутить',
   ALREADY_OPENED: 'Этот сундук уже открыт',
   NOT_FOUND: 'Не удалось найти запись. Обнови приложение',
   SERVER_ERROR: 'Что-то пошло не так. Попробуй ещё раз',
 };
+
+export type DemoAction = 'reset' | 'grant_chests' | 'grant_spins' | 'fill_jackpot';
 
 interface RewardsStore {
   playerId: string | null;
@@ -45,13 +51,15 @@ interface RewardsStore {
   scanSuccess: ScanSuccessInfo | null;
   scanError: string | null;
   scanBusy: boolean;
+  spinBusy: boolean;
 
   init: () => Promise<void>;
   loadState: () => Promise<void>;
   submitCode: (code: string) => Promise<boolean>;
   openChest: (chestId: string) => Promise<PrizeState | null>;
-  resetProgress: () => Promise<void>;
-  grantDemoChests: () => Promise<void>;
+  spinWheel: () => Promise<SpinResponse | null>;
+  demoAction: (action: DemoAction) => Promise<boolean>;
+  admin: (action: string, extra?: Record<string, unknown>) => Promise<AdminResponse | null>;
   go: (view: View) => void;
   openChestView: (chestId: string) => void;
   openClaim: (prizeId: string) => void;
@@ -82,13 +90,14 @@ export const useRewardsStore = create<RewardsStore>()(
       playerId: null,
       state: null,
       hydrated: false,
-      view: 'home',
+      view: 'scan',
       activeChestId: null,
       claimPrizeId: null,
       adminOpen: false,
       scanSuccess: null,
       scanError: null,
       scanBusy: false,
+      spinBusy: false,
 
       init: async () => {
         initTelegram();
@@ -102,7 +111,7 @@ export const useRewardsStore = create<RewardsStore>()(
           const json = (await res.json()) as StateResponse;
           if (json.ok) set({ state: json.state });
         } catch {
-          /* сеть недоступна — покажем пустую главную */
+          /* сеть недоступна — покажем пустой экран */
         } finally {
           set({ hydrated: true });
         }
@@ -126,7 +135,7 @@ export const useRewardsStore = create<RewardsStore>()(
 
         set({ scanBusy: true, scanError: null, scanSuccess: null });
         try {
-          const json = await postJson<ScanResp>('/api/scan', { playerId, code });
+          const json = await postJson<ScanResponse>('/api/scan', { playerId, code });
           if (!json.ok) {
             set({ scanError: ERROR_TEXT[json.error] ?? ERROR_TEXT.SERVER_ERROR });
             return false;
@@ -136,6 +145,7 @@ export const useRewardsStore = create<RewardsStore>()(
             scanSuccess: {
               flavorName: json.flavorName,
               lineName: json.lineName,
+              spinsGained: json.spinsGained,
               newChestIds: json.newChestIds,
               progressedQuestIds: json.progressedQuestIds,
             },
@@ -165,33 +175,45 @@ export const useRewardsStore = create<RewardsStore>()(
         }
       },
 
-      resetProgress: async () => {
+      spinWheel: async () => {
         const playerId = get().playerId;
-        if (!playerId) return;
+        if (!playerId || get().spinBusy) return null;
+        set({ spinBusy: true });
         try {
-          const json = await postJson<StateResponse>('/api/demo', {
-            playerId,
-            action: 'reset',
-          });
-          if (json.ok) {
-            set({ state: json.state, view: 'home', activeChestId: null, claimPrizeId: null });
-          }
+          const json = await postJson<SpinResponse>('/api/wheel/spin', { playerId });
+          if (json.ok) set({ state: json.state });
+          return json;
         } catch {
-          /* ignore */
+          return null;
+        } finally {
+          set({ spinBusy: false });
         }
       },
 
-      grantDemoChests: async () => {
+      demoAction: async (action) => {
         const playerId = get().playerId;
-        if (!playerId) return;
+        if (!playerId) return false;
         try {
-          const json = await postJson<StateResponse>('/api/demo', {
-            playerId,
-            action: 'grant_chests',
-          });
-          if (json.ok) set({ state: json.state });
+          const json = await postJson<StateResponse>('/api/demo', { playerId, action });
+          if (json.ok) {
+            set({ state: json.state });
+            return true;
+          }
+          return false;
         } catch {
-          /* ignore */
+          return false;
+        }
+      },
+
+      admin: async (action, extra = {}) => {
+        const playerId = get().playerId;
+        if (!playerId) return null;
+        try {
+          const json = await postJson<AdminResponse>('/api/admin', { playerId, action, ...extra });
+          if (json.ok) set({ state: json.state });
+          return json;
+        } catch {
+          return null;
         }
       },
 
@@ -208,5 +230,3 @@ export const useRewardsStore = create<RewardsStore>()(
     },
   ),
 );
-
-export type { ScanResponse };
