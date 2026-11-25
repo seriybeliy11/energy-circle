@@ -1,7 +1,8 @@
 'use client';
 
-// Глобальное состояние приложения: анонимный игрок, серверное состояние,
-// навигация по вкладкам и результаты действий.
+// Глобальное состояние демо-версии: весь прогресс одного игрока живёт в сейве
+// (localStorage, zustand persist), вся игровая логика — в локальном движке
+// (lib/rewards/engine). Никаких серверов, playerId и сетевых запросов.
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
@@ -9,12 +10,22 @@ import type {
   AdminResponse,
   ApiErrorCode,
   AppState,
-  OpenChestResponse,
   PrizeState,
-  ScanResponse,
   SpinResponse,
-  StateResponse,
 } from '@/lib/rewards/types';
+import {
+  buildState,
+  cloneSave,
+  createInitialSave,
+  grantPendingChests,
+  JACKPOT_THRESHOLD,
+  openChest as engineOpenChest,
+  spinWheel as engineSpinWheel,
+  submitCode as engineSubmitCode,
+  applyAdminAction,
+  applyDemoAction,
+  type PlayerSave,
+} from '@/lib/rewards/engine';
 import { initTelegram } from '@/utils/telegram';
 
 export type View = 'scan' | 'quests' | 'wheel' | 'prizes' | 'chest';
@@ -41,7 +52,9 @@ export const ERROR_TEXT: Record<ApiErrorCode, string> = {
 export type DemoAction = 'reset' | 'grant_chests' | 'grant_spins' | 'fill_jackpot';
 
 interface RewardsStore {
-  playerId: string | null;
+  /** Весь прогресс игрока — persist'ится в localStorage. */
+  save: PlayerSave;
+  /** Производное состояние для экранов. */
   state: AppState | null;
   hydrated: boolean;
   view: View;
@@ -56,7 +69,6 @@ interface RewardsStore {
   spinBusy: boolean;
 
   init: () => Promise<void>;
-  loadState: () => Promise<void>;
   submitCode: (code: string) => Promise<boolean>;
   openChest: (chestId: string) => Promise<PrizeState | null>;
   spinWheel: () => Promise<SpinResponse | null>;
@@ -71,171 +83,159 @@ interface RewardsStore {
   clearScanFeedback: () => void;
 }
 
-function freshPlayerId(): string {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return crypto.randomUUID();
-  }
-  return `p-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-async function postJson<T>(url: string, body: unknown): Promise<T> {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  return (await res.json()) as T;
+/** Приводит любой восстановленный сейв к валидной форме (страховка от битого кэша). */
+function normalizeSave(raw: unknown): PlayerSave {
+  const base = createInitialSave();
+  if (!raw || typeof raw !== 'object') return base;
+  const s = raw as Partial<PlayerSave>;
+  const num = (v: unknown, fallback = 0) =>
+    typeof v === 'number' && Number.isFinite(v) ? v : fallback;
+  return {
+    version: 2,
+    createdAt: typeof s.createdAt === 'string' ? s.createdAt : base.createdAt,
+    scans: Array.isArray(s.scans) ? s.scans : [],
+    chests: Array.isArray(s.chests) ? s.chests : [],
+    prizes: Array.isArray(s.prizes) ? s.prizes : [],
+    spins: Math.max(0, num(s.spins)),
+    goldenSpins: Math.max(0, num(s.goldenSpins)),
+    jackpotFill: Math.min(JACKPOT_THRESHOLD, Math.max(0, num(s.jackpotFill))),
+    missStreak: Math.max(0, num(s.missStreak)),
+    tickets: s.tickets && typeof s.tickets === 'object' && !Array.isArray(s.tickets) ? s.tickets : {},
+    quests: Array.isArray(s.quests) && s.quests.length > 0 ? s.quests : base.quests,
+    raffles: Array.isArray(s.raffles) && s.raffles.length > 0 ? s.raffles : base.raffles,
+  };
 }
 
 export const useRewardsStore = create<RewardsStore>()(
   persist(
     (set, get) => ({
-      playerId: null,
-      state: null,
-      hydrated: false,
-      view: 'scan',
-      activeChestId: null,
-      claimPrizeId: null,
-      seenPrizeIds: [],
-      adminOpen: false,
-      scanSuccess: null,
-      scanError: null,
-      scanBusy: false,
-      spinBusy: false,
+        save: createInitialSave(),
+        state: null,
+        hydrated: false,
+        view: 'scan',
+        activeChestId: null,
+        claimPrizeId: null,
+        seenPrizeIds: [],
+        adminOpen: false,
+        scanSuccess: null,
+        scanError: null,
+        scanBusy: false,
+        spinBusy: false,
 
-      init: async () => {
-        initTelegram();
-        let playerId = get().playerId;
-        if (!playerId) {
-          playerId = freshPlayerId();
-          set({ playerId });
-        }
-        try {
-          const res = await fetch(`/api/state?playerId=${encodeURIComponent(playerId)}`);
-          const json = (await res.json()) as StateResponse;
-          if (json.ok) set({ state: json.state });
-        } catch {
-          /* сеть недоступна — покажем пустой экран */
-        } finally {
-          set({ hydrated: true });
-        }
-      },
+        init: async () => {
+          initTelegram();
+          // ждём восстановления сейва из localStorage (обычно мгновенно)
+          if (!useRewardsStore.persist.hasHydrated()) {
+            await new Promise<void>((resolve) => {
+              let done = false;
+              const finish = () => {
+                if (done) return;
+                done = true;
+                resolve();
+              };
+              const unsub = useRewardsStore.persist.onFinishHydration(() => {
+                unsub();
+                finish();
+              });
+              // страховка: hydration завершилась между проверкой и подпиской
+              if (useRewardsStore.persist.hasHydrated()) finish();
+            });
+          }
+          const draft = normalizeSave(useRewardsStore.getState().save);
+          grantPendingChests(draft);
+          set({ save: draft, state: buildState(draft), hydrated: true });
+        },
 
-      loadState: async () => {
-        const playerId = get().playerId;
-        if (!playerId) return;
-        try {
-          const res = await fetch(`/api/state?playerId=${encodeURIComponent(playerId)}`);
-          const json = (await res.json()) as StateResponse;
-          if (json.ok) set({ state: json.state });
-        } catch {
-          /* игнорируем — покажем предыдущее состояние */
-        }
-      },
+        submitCode: async (code) => {
+          if (get().scanBusy) return false;
+          set({ scanBusy: true, scanError: null, scanSuccess: null });
 
-      submitCode: async (code) => {
-        const playerId = get().playerId;
-        if (!playerId || get().scanBusy) return false;
-
-        set({ scanBusy: true, scanError: null, scanSuccess: null });
-        try {
-          const json = await postJson<ScanResponse>('/api/scan', { playerId, code });
-          if (!json.ok) {
-            set({ scanError: ERROR_TEXT[json.error] ?? ERROR_TEXT.SERVER_ERROR });
+          const draft = cloneSave(get().save);
+          const res = engineSubmitCode(draft, code);
+          if (!res.ok) {
+            set({ scanBusy: false, scanError: ERROR_TEXT[res.error] ?? ERROR_TEXT.SERVER_ERROR });
             return false;
           }
           set({
-            state: json.state,
+            save: draft,
+            state: buildState(draft),
+            scanBusy: false,
             scanSuccess: {
-              flavorName: json.flavorName,
-              lineName: json.lineName,
-              spinsGained: json.spinsGained,
-              newChestIds: json.newChestIds,
-              progressedQuestIds: json.progressedQuestIds,
+              flavorName: res.flavorName,
+              lineName: res.lineName,
+              spinsGained: res.spinsGained,
+              newChestIds: res.newChestIds,
+              progressedQuestIds: res.progressedQuestIds,
             },
           });
           return true;
-        } catch {
-          set({ scanError: ERROR_TEXT.SERVER_ERROR });
-          return false;
-        } finally {
-          set({ scanBusy: false });
-        }
-      },
+        },
 
-      openChest: async (chestId) => {
-        const playerId = get().playerId;
-        if (!playerId) return null;
-        try {
-          const json = await postJson<OpenChestResponse>('/api/chests/open', {
-            playerId,
-            chestId,
-          });
-          if (!json.ok) return null;
-          set({ state: json.state });
-          return json.prize;
-        } catch {
-          return null;
-        }
-      },
+        openChest: async (chestId) => {
+          const draft = cloneSave(get().save);
+          const res = engineOpenChest(draft, chestId);
+          if (!res.ok) return null;
+          set({ save: draft, state: buildState(draft) });
+          return res.prize;
+        },
 
-      spinWheel: async () => {
-        const playerId = get().playerId;
-        if (!playerId || get().spinBusy) return null;
-        set({ spinBusy: true });
-        try {
-          const json = await postJson<SpinResponse>('/api/wheel/spin', { playerId });
-          if (json.ok) set({ state: json.state });
-          return json;
-        } catch {
-          return null;
-        } finally {
-          set({ spinBusy: false });
-        }
-      },
-
-      demoAction: async (action) => {
-        const playerId = get().playerId;
-        if (!playerId) return false;
-        try {
-          const json = await postJson<StateResponse>('/api/demo', { playerId, action });
-          if (json.ok) {
-            set({ state: json.state });
-            return true;
+        spinWheel: async () => {
+          if (get().spinBusy) return null;
+          set({ spinBusy: true });
+          const draft = cloneSave(get().save);
+          const res = engineSpinWheel(draft);
+          if (!res.ok) {
+            set({ spinBusy: false });
+            return res;
           }
-          return false;
-        } catch {
-          return false;
-        }
-      },
+          set({ save: draft, state: buildState(draft), spinBusy: false });
+          return res;
+        },
 
-      admin: async (action, extra = {}) => {
-        const playerId = get().playerId;
-        if (!playerId) return null;
-        try {
-          const json = await postJson<AdminResponse>('/api/admin', { playerId, action, ...extra });
-          if (json.ok) set({ state: json.state });
-          return json;
-        } catch {
-          return null;
-        }
-      },
+        demoAction: async (action) => {
+          const draft = cloneSave(get().save);
+          const res = applyDemoAction(draft, action);
+          if (!res.ok) return false;
+          set({ save: draft, state: buildState(draft) });
+          return true;
+        },
 
-      go: (view) => set({ view, scanSuccess: null, scanError: null }),
-      openChestView: (chestId) => set({ view: 'chest', activeChestId: chestId }),
-      openClaim: (prizeId) => set({ claimPrizeId: prizeId }),
-      markPrizesSeen: (ids) =>
-        set((s) => ({
-          seenPrizeIds: Array.from(new Set([...s.seenPrizeIds, ...ids])).slice(-300),
-        })),
-      setClaimPrize: (prizeId) => set({ claimPrizeId: prizeId }),
-      setAdminOpen: (open) => set({ adminOpen: open }),
-      clearScanFeedback: () => set({ scanSuccess: null, scanError: null }),
+        admin: async (action, extra = {}) => {
+          const draft = cloneSave(get().save);
+          const res = applyAdminAction(draft, action, extra);
+          if (!res.ok) return res;
+          set({ save: draft, state: buildState(draft) });
+          return res;
+        },
+
+        go: (view) => set({ view, scanSuccess: null, scanError: null }),
+        openChestView: (chestId) => set({ view: 'chest', activeChestId: chestId }),
+        openClaim: (prizeId) => set({ claimPrizeId: prizeId }),
+        markPrizesSeen: (ids) =>
+          set((s) => ({
+            seenPrizeIds: Array.from(new Set([...s.seenPrizeIds, ...ids])).slice(-300),
+          })),
+        setClaimPrize: (prizeId) => set({ claimPrizeId: prizeId }),
+        setAdminOpen: (open) => set({ adminOpen: open }),
+        clearScanFeedback: () => set({ scanSuccess: null, scanError: null }),
     }),
     {
       name: 'hqd-club-player',
+      version: 2,
       partialize: (s) =>
-        ({ playerId: s.playerId, seenPrizeIds: s.seenPrizeIds }) as RewardsStore,
+        ({ save: s.save, seenPrizeIds: s.seenPrizeIds }) as unknown as RewardsStore,
+      migrate: (persisted, version) => {
+        const old = (persisted ?? {}) as { seenPrizeIds?: string[]; save?: unknown };
+        // версия 1 хранила playerId + seenPrizeIds — прогресс начинаем с нуля
+        const seen =
+          version < 2 || !old.save
+            ? old.seenPrizeIds ?? []
+            : (old as { seenPrizeIds?: string[] }).seenPrizeIds ?? [];
+        return {
+          save: normalizeSave(version < 2 ? null : old.save),
+          seenPrizeIds: seen,
+        } as unknown as RewardsStore;
+      },
     },
   ),
 );
