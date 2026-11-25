@@ -367,3 +367,79 @@
     radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0) 42%),
     radial-gradient(circle at 72% 88%, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0) 38%);
 }
+
+/* ============ ЛЕПЕСТКИ КОЛЕСА (хром-шиммер) ============ */
+/* У каждого лепестка свой задержка — блик бежит по кругу волной. */
+
+.petal-shimmer {
+  animation: petal-shimmer 3.4s ease-in-out infinite;
+}
+@keyframes petal-shimmer {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.95;
+  }
+}
+
+/* ============ КЛЕТКА ФАРАДЕЯ (экран «Призы») ============ */
+/* Куб на углу: вращение вокруг вертикальной оси с лёгким наклоном камеры. */
+
+.cage-y {
+  transform-style: preserve-3d;
+  animation: cage-y 16s linear infinite;
+  will-change: transform;
+}
+@keyframes cage-y {
+  from {
+    transform: rotateX(-8deg) rotateY(0deg);
+  }
+  to {
+    transform: rotateX(-8deg) rotateY(360deg);
+  }
+}
+
+/* Грань-решётка: железная сетка (mesh) + рёбра. */
+.cage-face {
+  position: absolute;
+  inset: 0;
+  border: 3.5px solid rgba(51, 65, 85, 0.88);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.35),
+    inset 0 0 20px rgba(100, 116, 139, 0.18);
+  background-image:
+    repeating-linear-gradient(0deg, rgba(71, 85, 105, 0.17) 0 1px, transparent 1px 12px),
+    repeating-linear-gradient(90deg, rgba(71, 85, 105, 0.17) 0 1px, transparent 1px 12px);
+}
+
+/* Приз внутри клетки: лёгкое «дыхание» над гранью. */
+.cage-item {
+  display: block;
+  transform-style: preserve-3d;
+  animation: cage-bob 3.6s ease-in-out infinite;
+  will-change: transform;
+}
+@keyframes cage-bob {
+  0%,
+  100% {
+    transform: translateZ(0);
+  }
+  50% {
+    transform: translateZ(9px);
+  }
+}
+
+/* ============ ДОСТУПНОСТЬ ДВИЖЕНИЯ ============ */
+
+@media (prefers-reduced-motion: reduce) {
+  .petal-shimmer,
+  .cage-item {
+    animation: none;
+  }
+  .cage-y {
+    animation: none;
+    transform: rotateX(-8deg) rotateY(28deg);
+  }
+}

@@ -1,10 +1,10 @@
 'use client';
 
-// Экран открытия сундука: спокойная анимация (крышка пружинит вверх, карточка
-// приза выезжает на спринге), без конфетти и мигалок.
-// Компонент монтируется заново на каждый сундук (key = id в ClubApp).
+// Экран открытия лутбокса: под гипно-спиралью (чистый JS-canvas) крышка
+// пружинит вверх, карточка приза выезжает на спринге.
+// Компонент монтируется заново на каждый лутбокс (key = id в ClubApp).
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronRight, Loader2, PackageOpen } from 'lucide-react';
 import { toast } from 'sonner';
@@ -13,10 +13,11 @@ import type { PrizeState } from '@/lib/rewards/types';
 import { useRewardsStore } from '@/store/useRewardsStore';
 import { haptic } from '@/utils/telegram';
 import { ChestIcon, formatRub, TopBar, TierChip } from './bits';
+import { HypnosisCanvas } from './HypnosisCanvas';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Уже открытый сундук — сразу показываем его приз. */
+/** Уже открытый лутбокс — сразу показываем его приз. */
 function findExistingPrize(chestId: string): PrizeState | null {
   const st = useRewardsStore.getState();
   const chest = st.state?.chests.find((c) => c.id === chestId);
@@ -38,6 +39,12 @@ export function ChestOpenView() {
     initialPrize ? 'revealed' : 'idle',
   );
   const [error, setError] = useState(false);
+  // гипно-спираль разгоняется на время открытия
+  const hypRef = useRef(0);
+
+  useEffect(() => {
+    hypRef.current = phase === 'opening' ? 1 : 0;
+  }, [phase]);
 
   const state = useRewardsStore((s) => s.state);
   const chest = state?.chests.find((c) => c.id === activeChestId);
@@ -45,15 +52,15 @@ export function ChestOpenView() {
   if (!chest) {
     return (
       <div className="flex flex-col gap-4">
-        <TopBar title="Сундук" onBack={() => go('quests')} />
+        <TopBar title="Лутбокс" onBack={() => go('quests')} />
         <div className="glass flex flex-col items-center rounded-[26px] px-6 py-10 text-center">
-          <h2 className="text-[15px] font-semibold text-slate-800">Сундук не найден</h2>
+          <h2 className="text-[15px] font-semibold text-slate-800">Лутбокс не найден</h2>
           <button
             type="button"
             onClick={() => go('quests')}
             className="press mt-4 h-11 rounded-2xl bg-slate-900 px-5 text-[13px] font-semibold text-white"
           >
-            К сундукам
+            К лутбоксам
           </button>
         </div>
       </div>
@@ -65,11 +72,11 @@ export function ChestOpenView() {
   const handleOpen = async () => {
     if (phase !== 'idle') return;
     setPhase('opening');
-    const [result] = await Promise.all([openChestAction(chest.id), sleep(650)]);
+    const [result] = await Promise.all([openChestAction(chest.id), sleep(1150)]);
     if (!result) {
       setPhase('idle');
       setError(true);
-      toast.error('Не удалось открыть сундук. Попробуй ещё раз');
+      toast.error('Не удалось открыть лутбокс. Попробуй ещё раз');
       return;
     }
     haptic('success');
@@ -78,10 +85,22 @@ export function ChestOpenView() {
   };
 
   return (
-    <div className="flex min-h-[calc(100dvh-190px)] flex-col gap-5">
-      <TopBar title="Сундук" onBack={() => go('quests')} />
+    <div className="relative flex min-h-[calc(100dvh-190px)] flex-col gap-5">
+      <TopBar title="Лутбокс" onBack={() => go('quests')} />
 
-      <div className="flex flex-1 flex-col items-center justify-center pb-2">
+      <div className="relative flex flex-1 flex-col items-center justify-center pb-2">
+        {/* гипнотическая спираль за лутбоксом (чистый JS) */}
+        <div className="pointer-events-none absolute inset-x-[-60px] top-1/2 h-[560px] -translate-y-1/2" aria-hidden="true">
+          <HypnosisCanvas
+            intensityRef={hypRef}
+            colorA="15, 23, 42"
+            colorB="167, 139, 250"
+            style={{
+              WebkitMaskImage: 'radial-gradient(circle at 50% 50%, #000 34%, transparent 88%)',
+              maskImage: 'radial-gradient(circle at 50% 50%, #000 34%, transparent 88%)',
+            }}
+          />
+        </div>
         <AnimatePresence mode="wait">
           {phase !== 'revealed' ? (
             <motion.div
@@ -100,7 +119,7 @@ export function ChestOpenView() {
 
               <h2 className="mt-3 text-[19px] font-semibold text-slate-900">{tier.name}</h2>
               <p className="mt-1 text-[12.5px] text-slate-400">
-                {chest.questTitle ? `За задание «${chest.questTitle}»` : 'Демо-сундук'}
+                {chest.questTitle ? `За задание «${chest.questTitle}»` : 'Демо-лутбокс'}
               </p>
 
               <button
@@ -117,7 +136,7 @@ export function ChestOpenView() {
                 ) : (
                   <>
                     <PackageOpen size={17} />
-                    Открыть сундук
+                    Открыть лутбокс
                   </>
                 )}
               </button>

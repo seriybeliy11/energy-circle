@@ -352,11 +352,11 @@ function DemoTab({ onDone }: { onDone: () => void }) {
         {busy === 'fill_jackpot' && <Loader2 size={16} className="animate-spin text-slate-400" />}
       </button>
 
-      <button type="button" onClick={() => void run('grant_chests', 'Сундуки выданы')} className={btn}>
+      <button type="button" onClick={() => void run('grant_chests', 'Лутбоксы выданы')} className={btn}>
         <span className="flex items-center gap-3">
           <Plus size={17} className="text-slate-400" />
           <span className="text-[13.5px] font-semibold text-slate-800">
-            Сундуки всех уровней
+            Лутбоксы всех уровней
           </span>
         </span>
         {busy === 'grant_chests' && <Loader2 size={16} className="animate-spin text-slate-400" />}

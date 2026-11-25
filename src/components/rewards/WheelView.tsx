@@ -10,6 +10,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { toast } from 'sonner';
+import { HypnosisCanvas } from './HypnosisCanvas';
 import {
   ChevronRight,
   Crown,
@@ -46,6 +47,23 @@ function segmentPath(cx: number, cy: number, r: number, start: number, end: numb
   return `M ${cx} ${cy} L ${p1.x} ${p1.y} A ${r} ${r} 0 ${large} 1 ${p2.x} ${p2.y} Z`;
 }
 
+/** Сектор-кольцо (для бегущего по ободу блика). */
+function ringSectorPath(
+  cx: number,
+  cy: number,
+  rOuter: number,
+  rInner: number,
+  start: number,
+  end: number,
+) {
+  const p1 = polar(cx, cy, rOuter, start);
+  const p2 = polar(cx, cy, rOuter, end);
+  const p3 = polar(cx, cy, rInner, end);
+  const p4 = polar(cx, cy, rInner, start);
+  const large = end - start > 180 ? 1 : 0;
+  return `M ${p1.x} ${p1.y} A ${rOuter} ${rOuter} 0 ${large} 1 ${p2.x} ${p2.y} L ${p3.x} ${p3.y} A ${rInner} ${rInner} 0 ${large} 0 ${p4.x} ${p4.y} Z`;
+}
+
 function WheelSvg({ segments }: { segments: WheelSegmentState[] }) {
   const c = 180;
   const r = 172;
@@ -57,6 +75,37 @@ function WheelSvg({ segments }: { segments: WheelSegmentState[] }) {
         <linearGradient id="jackpotGrad" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#e8a92c" />
           <stop offset="100%" stopColor="#f8d472" />
+        </linearGradient>
+        {/* хром-градиенты лепестков: металлические полосы вдоль радиуса */}
+        {segments.map((s, i) => {
+          const mid = i * segAngle + segAngle / 2;
+          const p1 = polar(c, c, r * 0.34, mid);
+          const p2 = polar(c, c, r - 9, mid);
+          return (
+            <linearGradient
+              key={s.id}
+              id={`chrome-${s.id}`}
+              gradientUnits="userSpaceOnUse"
+              x1={p1.x}
+              y1={p1.y}
+              x2={p2.x}
+              y2={p2.y}
+            >
+              <stop offset="0%" stopColor="#ffffff" stopOpacity="0" />
+              <stop offset="14%" stopColor="#ffffff" stopOpacity="0.75" />
+              <stop offset="34%" stopColor="#2f4258" stopOpacity="0.6" />
+              <stop offset="52%" stopColor="#ffffff" stopOpacity="0.5" />
+              <stop offset="70%" stopColor="#384c63" stopOpacity="0.56" />
+              <stop offset="86%" stopColor="#ffffff" stopOpacity="0.78" />
+              <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+            </linearGradient>
+          );
+        })}
+        {/* мягкий градиент бегущего блика */}
+        <linearGradient id="sweepGrad" gradientUnits="userSpaceOnUse" x1="110" y1="0" x2="250" y2="0">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0" />
+          <stop offset="50%" stopColor="#ffffff" stopOpacity="0.55" />
+          <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
         </linearGradient>
       </defs>
 
@@ -72,16 +121,25 @@ function WheelSvg({ segments }: { segments: WheelSegmentState[] }) {
         const fillOpacity = isJackpot ? 1 : i % 2 === 0 ? 0.55 : 0.28;
         const fill = isJackpot ? 'url(#jackpotGrad)' : s.color;
         const textColor = isJackpot ? '#ffffff' : s.kind === 'EMPTY' ? '#8a94a8' : '#0f172a';
+        const d = segmentPath(c, c, r - 9, start, end);
 
         return (
           <g key={s.id}>
+            {/* база */}
             <path
-              d={segmentPath(c, c, r - 9, start, end)}
+              d={d}
               fill={fill}
               fillOpacity={fillOpacity}
               stroke="#ffffff"
               strokeWidth={2.5}
               strokeLinejoin="round"
+            />
+            {/* хром-налёт с бегущим по кругу блиском */}
+            <path
+              d={d}
+              fill={`url(#chrome-${s.id})`}
+              className="petal-shimmer"
+              style={{ animationDelay: `${i * 0.22}s` }}
             />
             <g transform={`rotate(${mid} ${c} ${c})`}>
               <text
@@ -110,6 +168,19 @@ function WheelSvg({ segments }: { segments: WheelSegmentState[] }) {
           </g>
         );
       })}
+
+      {/* бегущий по ободу хром-блик (SMIL — чистый SVG, без JS) */}
+      <g opacity="0.5">
+        <path d={ringSectorPath(c, c, r - 10, r - 46, -20, 22)} fill="url(#sweepGrad)" />
+        <animateTransform
+          attributeName="transform"
+          type="rotate"
+          from="0 180 180"
+          to="360 180 180"
+          dur="9s"
+          repeatCount="indefinite"
+        />
+      </g>
 
       {/* внутреннее тонкое кольцо */}
       <circle
@@ -320,6 +391,8 @@ export function WheelView() {
   const [spinning, setSpinning] = useState(false);
   const [result, setResult] = useState<SpinOkResponse | null>(null);
   const timersRef = useRef<number[]>([]);
+  // сигнал интенсивности гипно-спирали: 0 — покой, 1 — трип во время спина
+  const hypRef = useRef(0);
 
   // Чистим таймеры тиков при размонтировании вкладки
   useEffect(() => {
@@ -346,11 +419,13 @@ export function WheelView() {
     }
     setSpinning(true);
     setResult(null);
+    hypRef.current = 1;
     haptic('light');
 
     const json = await spinWheelAction();
     if (!json || !json.ok) {
       setSpinning(false);
+      hypRef.current = 0;
       toast.error(!json ? ERROR_TEXT.SERVER_ERROR : ERROR_TEXT[json.error]);
       return;
     }
@@ -385,6 +460,7 @@ export function WheelView() {
     timersRef.current.push(
       window.setTimeout(() => {
         setSpinning(false);
+        hypRef.current = 0;
         if (json.kind === 'JACKPOT') {
           sound.jackpot();
           haptic('success');
@@ -439,9 +515,21 @@ export function WheelView() {
         )}
       </div>
 
-      {/* колесо — по центру оставшейся высоты */}
+      {/* колесо — по центру оставшейся высоты, за ним гипно-спираль */}
       <div className="flex flex-1 items-center justify-center py-3">
         <div className="relative w-full max-w-[372px]" style={{ perspective: '1100px' }}>
+          {/* гипнотический триппи-фон чистым JS (canvas), края мягко затухают */}
+          <div className="pointer-events-none absolute -inset-12" aria-hidden="true">
+            <HypnosisCanvas
+              intensityRef={hypRef}
+              colorA="15, 23, 42"
+              colorB="124, 108, 220"
+              style={{
+                WebkitMaskImage: 'radial-gradient(circle at 50% 50%, #000 0 68%, transparent 94%)',
+                maskImage: 'radial-gradient(circle at 50% 50%, #000 0 68%, transparent 94%)',
+              }}
+            />
+          </div>
           {/* стрелка со «щелчком» на старте */}
           <motion.div
             className="absolute -top-2.5 left-1/2 z-20 -translate-x-1/2"

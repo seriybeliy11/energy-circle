@@ -1,7 +1,8 @@
 'use client';
 
-// Экран «Призы»: карточка активного розыгрыша с обратным отсчётом и билетами,
-// список выигранных подарков (сундук / колесо / джекпот).
+// Экран «Призы»: сверху — 3D железная клетка Фарадея (стоит на углу,
+// внутри лежат иконки потенциальных призов), ниже — карточка активного
+// розыгрыша с обратным отсчётом и список выигранных подарков.
 
 import { useEffect, useState } from 'react';
 import { ChevronRight, Crown, Disc3, Gift, Ticket } from 'lucide-react';
@@ -9,9 +10,10 @@ import { CHEST_TIERS } from '@/lib/rewards/catalog';
 import type { PrizeSource } from '@/lib/rewards/types';
 import { useRewardsStore } from '@/store/useRewardsStore';
 import { plural } from './bits';
+import { FaradayCage } from './FaradayCage';
 
 const SOURCE_ICON: Record<PrizeSource, { icon: typeof Gift; label: string }> = {
-  CHEST: { icon: Gift, label: 'Сундук' },
+  CHEST: { icon: Gift, label: 'Лутбокс' },
   WHEEL: { icon: Disc3, label: 'Колесо' },
   JACKPOT: { icon: Crown, label: 'Джекпот' },
 };
@@ -107,6 +109,19 @@ export function PrizesView() {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* потенциальные призы — в железной клетке Фарадея */}
+      <section aria-label="Потенциальные призы" className="glass relative overflow-hidden rounded-[26px] pb-4 pt-5">
+        <span
+          className="pointer-events-none absolute left-1/2 top-10 h-40 w-40 -translate-x-1/2 rounded-full bg-violet-200/40 blur-3xl"
+          aria-hidden="true"
+        />
+        <FaradayCage />
+        <div className="relative text-center">
+          <h2 className="text-[15px] font-semibold text-slate-900">Что внутри</h2>
+          <p className="mt-0.5 text-[11.5px] text-slate-400">Банки, мерч, билеты и джекпот</p>
+        </div>
+      </section>
+
       {state.raffle && <RaffleCard />}
 
       {state.prizes.length === 0 ? (
@@ -115,7 +130,7 @@ export function PrizesView() {
             <Gift size={28} />
           </span>
           <h2 className="mt-4 text-[15.5px] font-semibold text-slate-800">Призов пока нет</h2>
-          <p className="mt-1 text-[12.5px] text-slate-400">Открой сундук или крути колесо</p>
+          <p className="mt-1 text-[12.5px] text-slate-400">Открой лутбокс или крути колесо</p>
           <button
             type="button"
             onClick={() => go('scan')}

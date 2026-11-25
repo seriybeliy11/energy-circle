@@ -313,7 +313,7 @@ export async function buildAppState(playerId: string): Promise<AppState> {
       const prize = prizeList.find((p) => p.id === c.prizeId) ?? null;
       const sourceTitle =
         c.sourceQuestId === 'demo'
-          ? 'Демо-сундук'
+          ? 'Демо-лутбокс'
           : questTitles.get(c.sourceQuestId) ?? 'Задание';
       return {
         id: c.id,

@@ -103,7 +103,7 @@ export function ScanResultSheet() {
                 </span>
                 <div className="min-w-0 flex-1 text-left">
                   <p className="text-[10.5px] font-bold uppercase tracking-[0.16em] text-emerald-600">
-                    Сундук получен
+                    Лутбокс получен
                   </p>
                   <p className="mt-0.5 text-[14.5px] font-semibold text-slate-900">
                     {CHEST_TIERS[firstChest.tier].name}
@@ -118,7 +118,7 @@ export function ScanResultSheet() {
                 }}
                 className="press mt-3.5 flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 text-[14px] font-semibold text-white"
               >
-                Открыть сундук
+                Открыть лутбокс
                 <ChevronRight size={16} />
               </button>
             </div>

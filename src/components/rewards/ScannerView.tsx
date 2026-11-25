@@ -34,73 +34,84 @@ const DM_PATTERN = [
   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
 ];
 
-function DataMatrixIcon({ size }: { size: number }) {
-  const cell = size / 12;
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true" style={{ display: 'block' }}>
-      {DM_PATTERN.flatMap((row, y) =>
-        row.map((v, x) =>
-          v ? (
-            <rect key={`${x}-${y}`} x={x * cell} y={y * cell} width={cell} height={cell} fill="#0f172a" />
-          ) : null,
-        ),
-      )}
-    </svg>
-  );
-}
-
 /* ============ ИНФОГРАФИКА «ГДЕ КОД» ============ */
 
+/** Код — на КРЫШКЕ банки: слева банка с подсвеченной крышкой, справа —
+ *  крупный вид крышки сверху с DataMatrix и пульсирующим прицелом. */
 function WhereIsCodeHint() {
   return (
-    <div className="glass-soft flex items-center gap-3 rounded-3xl px-4 py-3">
-      {/* банка с кодом на дне */}
-      <svg width="58" height="94" viewBox="0 0 64 100" className="shrink-0" aria-hidden="true">
-        {/* крышка */}
-        <rect x="15" y="6" width="34" height="8" rx="4" fill="rgba(255,255,255,0.6)" stroke="#94a3b8" strokeWidth="2.5" />
-        {/* корпус */}
-        <rect x="12" y="13" width="40" height="79" rx="10" fill="rgba(255,255,255,0.5)" stroke="#94a3b8" strokeWidth="2.5" />
-        {/* «этикетка» */}
-        <line x1="22" y1="32" x2="42" y2="32" stroke="#cbd5e1" strokeWidth="2.5" strokeLinecap="round" />
-        <line x1="26" y1="39" x2="38" y2="39" stroke="#cbd5e1" strokeWidth="2.5" strokeLinecap="round" />
-        {/* код на дне */}
-        <g transform="translate(24 71)">
-          {DM_PATTERN.flatMap((row, y) =>
-            row.map((v, x) =>
-              v ? (
-                <rect
-                  key={`c-${x}-${y}`}
-                  x={x * 1.33}
-                  y={y * 1.33}
-                  width={1.33}
-                  height={1.33}
-                  fill="#0f172a"
-                  opacity={0.85}
-                />
-              ) : null,
-            ),
-          )}
-        </g>
-        {/* прицел вокруг кода */}
-        <g className="hint-pulse" stroke="#059669" strokeWidth="2.5" fill="none" strokeLinecap="round">
-          <path d="M18 66 v-4 a3 3 0 0 1 3 -3 h4" />
-          <path d="M46 66 v-4 a3 3 0 0 0 -3 -3 h-4" />
-          <path d="M18 92 v4 a3 3 0 0 0 3 3 h4" />
-          <path d="M46 92 v4 a3 3 0 0 1 -3 3 h-4" />
-        </g>
-      </svg>
+    <div className="glass rounded-[26px] p-4">
+      <div className="flex items-center gap-3">
+        {/* банка — вид сбоку, код на крышке сверху */}
+        <svg width="96" height="150" viewBox="0 0 96 156" className="shrink-0" aria-hidden="true">
+          {/* дно (перспектива) */}
+          <ellipse cx="48" cy="145" rx="33" ry="7" fill="rgba(255,255,255,0.55)" stroke="#94a3b8" strokeWidth="2.5" />
+          {/* корпус */}
+          <path d="M15 24 v118 a33 7 0 0 0 66 0 v-118" fill="rgba(255,255,255,0.5)" stroke="#94a3b8" strokeWidth="2.5" />
+          {/* этикетка */}
+          <line x1="28" y1="58" x2="68" y2="58" stroke="#cbd5e1" strokeWidth="2.5" strokeLinecap="round" />
+          <line x1="33" y1="67" x2="63" y2="67" stroke="#cbd5e1" strokeWidth="2.5" strokeLinecap="round" />
+          <line x1="30" y1="76" x2="66" y2="76" stroke="#cbd5e1" strokeWidth="2.5" strokeLinecap="round" />
+          {/* крышка — видимый верхний торец */}
+          <ellipse cx="48" cy="24" rx="33" ry="8.5" fill="#ffffff" stroke="#94a3b8" strokeWidth="2.5" />
+          {/* зона кода на крышке */}
+          <ellipse cx="48" cy="24" rx="18" ry="4.4" fill="rgba(15,23,42,0.09)" />
+          {/* пульсирующая подсветка крышки */}
+          <ellipse
+            cx="48"
+            cy="24"
+            rx="38"
+            ry="12"
+            fill="none"
+            stroke="#059669"
+            strokeWidth="2.5"
+            className="hint-pulse"
+          />
+        </svg>
 
-      <MoveRight size={18} className="shrink-0 text-slate-300" aria-hidden="true" />
+        <MoveRight size={20} className="shrink-0 text-slate-300" aria-hidden="true" />
 
-      {/* увеличенный код + подпись */}
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        <span className="shrink-0 rounded-xl bg-white/70 p-2 shadow-sm">
-          <DataMatrixIcon size={42} />
-        </span>
-        <div className="min-w-0">
-          <p className="text-[12.5px] font-bold leading-tight text-slate-800">Код на дне банки</p>
-          <p className="mt-1 text-[11px] leading-tight text-slate-400">Квадратный · Честный знак</p>
+        {/* крышка сверху — крупно, с кодом */}
+        <div className="flex min-w-0 flex-1 justify-center">
+          <svg width="138" height="138" viewBox="0 0 138 138" aria-hidden="true">
+            {/* борт крышки */}
+            <circle cx="69" cy="69" r="63" fill="rgba(255,255,255,0.65)" stroke="#94a3b8" strokeWidth="3" />
+            <circle cx="69" cy="69" r="55" fill="none" stroke="#cbd5e1" strokeWidth="2" />
+            {/* язычок-открывашка */}
+            <rect x="101" y="49" width="16" height="38" rx="8" fill="rgba(255,255,255,0.85)" stroke="#94a3b8" strokeWidth="2" />
+            <circle cx="109" cy="68" r="3.2" fill="none" stroke="#94a3b8" strokeWidth="2" />
+            {/* DataMatrix по центру крышки */}
+            <g transform="translate(35 40)">
+              {DM_PATTERN.flatMap((row, y) =>
+                row.map((v, x) =>
+                  v ? (
+                    <rect
+                      key={`lid-${x}-${y}`}
+                      x={x * 4.83}
+                      y={y * 4.83}
+                      width={4.83}
+                      height={4.83}
+                      fill="#0f172a"
+                      opacity={0.88}
+                    />
+                  ) : null,
+                ),
+              )}
+            </g>
+            {/* прицел вокруг кода */}
+            <g className="hint-pulse" stroke="#059669" strokeWidth="2.5" fill="none" strokeLinecap="round">
+              <path d="M27 44 v-8 a4 4 0 0 1 4 -4 h8" />
+              <path d="M101 44 v-8 a4 4 0 0 0 -4 -4 h-8" />
+              <path d="M27 94 v8 a4 4 0 0 0 4 4 h8" />
+              <path d="M101 94 v8 a4 4 0 0 1 -4 4 h-8" />
+            </g>
+          </svg>
         </div>
+      </div>
+
+      <div className="mt-2.5 text-center">
+        <p className="text-[13px] font-bold leading-tight text-slate-800">Код на крышке банки</p>
+        <p className="mt-0.5 text-[11px] leading-tight text-slate-400">Квадратный код · Честный знак</p>
       </div>
     </div>
   );
@@ -307,7 +318,7 @@ export function ScannerView() {
               Ввести код
             </DrawerTitle>
             <DrawerDescription className="text-[12.5px] text-slate-400">
-              Код на дне банки, начинается с 01
+              Код на крышке банки, начинается с 01
             </DrawerDescription>
             <input
               value={manualValue}
