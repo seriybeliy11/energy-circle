@@ -1,5 +1,5 @@
-import HeistApp from '@/components/HeistApp';
+import ClubApp from '@/components/rewards/ClubApp';
 
 export default function Home() {
-  return <HeistApp />;
+  return <ClubApp />;
 }
