@@ -3,6 +3,8 @@
 // Экран «Колесо»: 1 скан = 1 спин. Свежие азартные механики:
 // near-miss («победа близка» — промах рядом с джекпотом), джекпот-бар с гарантией,
 // золотой спин x2, pity (два промаха подряд — без промаха), билеты в розыгрыш.
+// Колесо — крупное, по центру экрана, в стеклянном стиле; прокрутка с лёгким
+// 3D-эффектом (наклон-«взлёт» с затухающим покачиванием) и щелчком стрелки.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
@@ -27,10 +29,10 @@ import { cn } from '@/lib/utils';
 import { formatRub, plural } from './bits';
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from '@/components/ui/drawer';
 
-const SPIN_DURATION_MS = 4600;
-const TICK_COUNT = 22;
+const SPIN_DURATION_MS = 5000;
+const TICK_COUNT = 26;
 
-/* ============ SVG-КОЛЕСО ============ */
+/* ============ SVG-КОЛЕСО (стеклянный pure-дизайн) ============ */
 
 function polar(cx: number, cy: number, r: number, angleDeg: number) {
   const rad = ((angleDeg - 90) * Math.PI) / 180;
@@ -45,40 +47,48 @@ function segmentPath(cx: number, cy: number, r: number, start: number, end: numb
 }
 
 function WheelSvg({ segments }: { segments: WheelSegmentState[] }) {
-  const c = 160;
-  const r = 152;
+  const c = 180;
+  const r = 172;
   const segAngle = 360 / Math.max(segments.length, 1);
 
   return (
-    <svg viewBox="0 0 320 320" className="h-full w-full" role="img" aria-label="Колесо призов">
+    <svg viewBox="0 0 360 360" className="h-full w-full" role="img" aria-label="Колесо призов">
       <defs>
         <linearGradient id="jackpotGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#e39b1d" />
+          <stop offset="0%" stopColor="#e8a92c" />
           <stop offset="100%" stopColor="#f8d472" />
         </linearGradient>
       </defs>
-      <circle cx={c} cy={c} r={r} fill="#ffffff" opacity={0.5} />
+
+      {/* стеклянное основание */}
+      <circle cx={c} cy={c} r={r} fill="#ffffff" opacity={0.4} />
+
       {segments.map((s, i) => {
         const start = i * segAngle;
         const end = start + segAngle;
         const mid = start + segAngle / 2;
-        const fill = s.kind === 'JACKPOT' ? 'url(#jackpotGrad)' : s.color;
-        const textColor =
-          s.kind === 'JACKPOT' ? '#ffffff' : s.kind === 'EMPTY' ? '#3f4a5f' : '#0f172a';
+        const isJackpot = s.kind === 'JACKPOT';
+        // стеклянные сектора: чередуем прозрачность для лёгкого разделения
+        const fillOpacity = isJackpot ? 1 : i % 2 === 0 ? 0.55 : 0.28;
+        const fill = isJackpot ? 'url(#jackpotGrad)' : s.color;
+        const textColor = isJackpot ? '#ffffff' : s.kind === 'EMPTY' ? '#8a94a8' : '#0f172a';
+
         return (
           <g key={s.id}>
             <path
-              d={segmentPath(c, c, r - 2, start, end)}
+              d={segmentPath(c, c, r - 9, start, end)}
               fill={fill}
+              fillOpacity={fillOpacity}
               stroke="#ffffff"
               strokeWidth={2.5}
+              strokeLinejoin="round"
             />
             <g transform={`rotate(${mid} ${c} ${c})`}>
               <text
                 x={c}
-                y={c - r + 44}
+                y={c - r + 48}
                 textAnchor="middle"
-                fontSize={s.kind === 'JACKPOT' ? 13 : 15}
+                fontSize={isJackpot ? 17 : 15.5}
                 fontWeight={800}
                 fill={textColor}
               >
@@ -86,18 +96,56 @@ function WheelSvg({ segments }: { segments: WheelSegmentState[] }) {
               </text>
               <text
                 x={c}
-                y={c - r + 57}
+                y={c - r + 61}
                 textAnchor="middle"
                 fontSize={8}
                 fontWeight={700}
                 fill={textColor}
-                opacity={s.kind === 'EMPTY' ? 1 : 0.88}
-                style={{ letterSpacing: '0.06em' }}
+                opacity={isJackpot ? 1 : 0.85}
+                style={{ letterSpacing: '0.07em' }}
               >
                 {s.labelSub.toUpperCase()}
               </text>
             </g>
           </g>
+        );
+      })}
+
+      {/* внутреннее тонкое кольцо */}
+      <circle
+        cx={c}
+        cy={c}
+        r={r - 78}
+        fill="none"
+        stroke="#ffffff"
+        strokeOpacity={0.9}
+        strokeWidth={1.5}
+      />
+
+      {/* внешнее стеклянное кольцо */}
+      <circle
+        cx={c}
+        cy={c}
+        r={r - 4.5}
+        fill="none"
+        stroke="#ffffff"
+        strokeWidth={9}
+        strokeOpacity={0.96}
+      />
+
+      {/* штырьки-разделители на кольце */}
+      {segments.map((s, i) => {
+        const p = polar(c, c, r - 12, i * segAngle);
+        return (
+          <circle
+            key={`peg-${s.id}`}
+            cx={p.x}
+            cy={p.y}
+            r={3.4}
+            fill="#ffffff"
+            stroke="rgba(15, 23, 42, 0.16)"
+            strokeWidth={1}
+          />
         );
       })}
     </svg>
@@ -323,7 +371,7 @@ export function WheelView() {
     const currentNorm = ((rotationRef.current % 360) + 360) % 360;
     let delta = neededNorm - currentNorm;
     if (delta <= 0) delta += 360;
-    const full = (5 + Math.floor(Math.random() * 2)) * 360;
+    const full = (6 + Math.floor(Math.random() * 2)) * 360;
     const next = rotationRef.current + full + delta;
     rotationRef.current = next;
     setRotation(next);
@@ -365,9 +413,9 @@ export function WheelView() {
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-h-[calc(100dvh-168px)] flex-col gap-3">
       {/* джекпот-бар */}
-      <div className={cn('glass rounded-3xl p-4', jackpotReady && 'jackpot-ready')}>
+      <div className={cn('glass rounded-3xl px-4 py-3.5', jackpotReady && 'jackpot-ready')}>
         <div className="flex items-center justify-between">
           <span className="flex items-center gap-1.5 text-[11px] font-extrabold uppercase tracking-[0.18em] text-slate-500">
             <Crown size={14} className="text-amber-500" />
@@ -391,65 +439,105 @@ export function WheelView() {
         )}
       </div>
 
-      {/* колесо */}
-      <div className="relative mx-auto w-full max-w-[340px]">
-        {/* стрелка */}
-        <div className="absolute -top-1 left-1/2 z-20 -translate-x-1/2" aria-hidden="true">
-          <svg width="34" height="24" viewBox="0 0 34 24">
-            <path
-              d="M3 3 L17 20 L31 3"
-              fill="#0f172a"
-              stroke="#ffffff"
-              strokeWidth="3.5"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
+      {/* колесо — по центру оставшейся высоты */}
+      <div className="flex flex-1 items-center justify-center py-3">
+        <div className="relative w-full max-w-[372px]" style={{ perspective: '1100px' }}>
+          {/* стрелка со «щелчком» на старте */}
+          <motion.div
+            className="absolute -top-2.5 left-1/2 z-20 -translate-x-1/2"
+            style={{ transformOrigin: '50% 85%' }}
+            animate={spinning ? 'kick' : 'idle'}
+            variants={{
+              idle: { rotate: 0 },
+              kick: {
+                rotate: [0, -17, 7, 0],
+                transition: { duration: 0.55, ease: 'easeOut' },
+              },
+            }}
+            aria-hidden="true"
+          >
+            <svg width="36" height="26" viewBox="0 0 34 24">
+              <path
+                d="M3 3 L17 20 L31 3"
+                fill="#0f172a"
+                stroke="#ffffff"
+                strokeWidth="3.5"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </motion.div>
 
-        <div
-          className="glass rounded-full p-2"
-          style={{
-            transform: `rotate(${rotation}deg)`,
-            transition: `transform ${SPIN_DURATION_MS}ms cubic-bezier(0.12, 0.82, 0.05, 1)`,
-          }}
-        >
-          <WheelSvg segments={segments} />
-        </div>
+          {/* 3D-обёртка: «взлёт» с наклоном и затухающим покачиванием */}
+          <motion.div
+            className="relative"
+            style={{ transformStyle: 'preserve-3d' }}
+            animate={spinning ? 'spin' : 'idle'}
+            variants={{
+              idle: { rotateX: 0, scale: 1 },
+              spin: {
+                rotateX: [0, 13, -7, 3.5, -1.5, 0],
+                scale: [1, 1.055, 1.025, 1.008, 1, 1],
+                transition: {
+                  duration: SPIN_DURATION_MS / 1000,
+                  times: [0, 0.1, 0.32, 0.58, 0.8, 1],
+                  ease: 'easeOut',
+                },
+              },
+            }}
+          >
+            <div
+              className="glass rounded-full p-3"
+              style={{
+                transform: `rotate(${rotation}deg)`,
+                transition: `transform ${SPIN_DURATION_MS}ms cubic-bezier(0.1, 0.8, 0.05, 1)`,
+              }}
+            >
+              <WheelSvg segments={segments} />
+            </div>
 
-        {/* центральная кнопка */}
-        <button
-          type="button"
-          onClick={() => void spin()}
-          disabled={spinning}
-          aria-label={
-            totalSpins > 0
-              ? `Крутить колесо, спинов: ${totalSpins}`
-              : 'Спинов нет — сканировать банку'
-          }
-          className={cn(
-            'press absolute left-1/2 top-1/2 z-10 flex h-[88px] w-[88px] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border-[3px] border-white shadow-xl',
-            player.goldenSpins > 0 ? 'bg-amber-500 text-white' : 'bg-slate-900 text-white',
-          )}
-        >
-          {spinning ? (
-            <span className="text-[13px] font-extrabold tracking-widest">···</span>
-          ) : totalSpins <= 0 ? (
-            <>
-              <ScanLine size={20} />
-              <span className="mt-0.5 text-[10px] font-bold uppercase tracking-wider opacity-80">
-                Скан
+            {/* стеклянный блик поверх (не вращается) */}
+            <span className="wheel-gloss" aria-hidden="true" />
+          </motion.div>
+
+          {/* центральная кнопка */}
+          <button
+            type="button"
+            onClick={() => void spin()}
+            disabled={spinning}
+            aria-label={
+              totalSpins > 0
+                ? `Крутить колесо, спинов: ${totalSpins}`
+                : 'Спинов нет — сканировать банку'
+            }
+            className={cn(
+              'press absolute left-1/2 top-1/2 z-10 flex h-[96px] w-[96px] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border-[4px] border-white shadow-xl',
+              player.goldenSpins > 0 ? 'bg-amber-500 text-white' : 'bg-slate-900 text-white',
+            )}
+          >
+            {spinning ? (
+              <span className="spin-dots" aria-hidden="true">
+                <span />
+                <span />
+                <span />
               </span>
-            </>
-          ) : (
-            <>
-              <span className="text-[12.5px] font-extrabold tracking-wide">КРУТИТЬ</span>
-              <span className="mt-0.5 flex items-center gap-1 text-[11.5px] font-semibold tabular-nums text-white/75">
-                <RotateCw size={11} />
-                {totalSpins}
-              </span>
-            </>
-          )}
-        </button>
+            ) : totalSpins <= 0 ? (
+              <>
+                <ScanLine size={21} />
+                <span className="mt-1 text-[10px] font-bold uppercase tracking-wider opacity-80">
+                  Скан
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="text-[13px] font-extrabold tracking-wide">КРУТИТЬ</span>
+                <span className="mt-1 flex items-center gap-1 text-[12px] font-semibold tabular-nums text-white/75">
+                  <RotateCw size={11} />
+                  {totalSpins}
+                </span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* метрики */}

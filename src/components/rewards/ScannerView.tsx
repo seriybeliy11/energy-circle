@@ -1,18 +1,110 @@
 'use client';
 
-// Экран сканирования: камера (DataMatrix через @zxing/browser), ручной ввод и демо-скан.
+// Экран сканирования: камера (DataMatrix через @zxing/browser), под ней —
+// схематичная инфографика «какой код сканировать», ручной ввод и демо-скан.
 // Каждый успешный скан: +1 спин колеса + прогресс заданий.
 
 import { useEffect, useRef, useState } from 'react';
 import type { IScannerControls } from '@zxing/browser';
-import { CameraOff, Dices, FlaskConical, Keyboard, Loader2, ScanLine, ShieldX, TriangleAlert } from 'lucide-react';
+import { CameraOff, Dices, FlaskConical, Keyboard, MoveRight, ScanLine, ShieldX, TriangleAlert } from 'lucide-react';
 import { buildDemoCode, buildRetiredDemoCode } from '@/lib/rewards/codeParser';
 import { useRewardsStore } from '@/store/useRewardsStore';
 import { haptic } from '@/utils/telegram';
 import { sound } from '@/utils/sound';
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from '@/components/ui/drawer';
+import { HqdLoader } from './HqdLoader';
 
 type CamStatus = 'starting' | 'active' | 'denied';
+
+/* ============ СХЕМАТИЧНЫЙ DATAMATRIX ============ */
+
+/** Фиксированный рисунок 12×12: сплошные левая/нижняя кромки + чередование сверху/справа. */
+const DM_PATTERN = [
+  [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1],
+  [1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1],
+  [1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0],
+  [1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1],
+  [1, 1, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0],
+  [1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1],
+  [1, 1, 1, 0, 1, 0, 0, 1, 1, 1, 0, 0],
+  [1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 1],
+  [1, 1, 0, 1, 1, 0, 1, 0, 1, 0, 0, 0],
+  [1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 1, 1],
+  [1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 0],
+  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+];
+
+function DataMatrixIcon({ size }: { size: number }) {
+  const cell = size / 12;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true" style={{ display: 'block' }}>
+      {DM_PATTERN.flatMap((row, y) =>
+        row.map((v, x) =>
+          v ? (
+            <rect key={`${x}-${y}`} x={x * cell} y={y * cell} width={cell} height={cell} fill="#0f172a" />
+          ) : null,
+        ),
+      )}
+    </svg>
+  );
+}
+
+/* ============ ИНФОГРАФИКА «ГДЕ КОД» ============ */
+
+function WhereIsCodeHint() {
+  return (
+    <div className="glass-soft flex items-center gap-3 rounded-3xl px-4 py-3">
+      {/* банка с кодом на дне */}
+      <svg width="58" height="94" viewBox="0 0 64 100" className="shrink-0" aria-hidden="true">
+        {/* крышка */}
+        <rect x="15" y="6" width="34" height="8" rx="4" fill="rgba(255,255,255,0.6)" stroke="#94a3b8" strokeWidth="2.5" />
+        {/* корпус */}
+        <rect x="12" y="13" width="40" height="79" rx="10" fill="rgba(255,255,255,0.5)" stroke="#94a3b8" strokeWidth="2.5" />
+        {/* «этикетка» */}
+        <line x1="22" y1="32" x2="42" y2="32" stroke="#cbd5e1" strokeWidth="2.5" strokeLinecap="round" />
+        <line x1="26" y1="39" x2="38" y2="39" stroke="#cbd5e1" strokeWidth="2.5" strokeLinecap="round" />
+        {/* код на дне */}
+        <g transform="translate(24 71)">
+          {DM_PATTERN.flatMap((row, y) =>
+            row.map((v, x) =>
+              v ? (
+                <rect
+                  key={`c-${x}-${y}`}
+                  x={x * 1.33}
+                  y={y * 1.33}
+                  width={1.33}
+                  height={1.33}
+                  fill="#0f172a"
+                  opacity={0.85}
+                />
+              ) : null,
+            ),
+          )}
+        </g>
+        {/* прицел вокруг кода */}
+        <g className="hint-pulse" stroke="#059669" strokeWidth="2.5" fill="none" strokeLinecap="round">
+          <path d="M18 66 v-4 a3 3 0 0 1 3 -3 h4" />
+          <path d="M46 66 v-4 a3 3 0 0 0 -3 -3 h-4" />
+          <path d="M18 92 v4 a3 3 0 0 0 3 3 h4" />
+          <path d="M46 92 v4 a3 3 0 0 1 -3 3 h-4" />
+        </g>
+      </svg>
+
+      <MoveRight size={18} className="shrink-0 text-slate-300" aria-hidden="true" />
+
+      {/* увеличенный код + подпись */}
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <span className="shrink-0 rounded-xl bg-white/70 p-2 shadow-sm">
+          <DataMatrixIcon size={42} />
+        </span>
+        <div className="min-w-0">
+          <p className="text-[12.5px] font-bold leading-tight text-slate-800">Код на дне банки</p>
+          <p className="mt-1 text-[11px] leading-tight text-slate-400">Квадратный · Честный знак</p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function CameraScanner({
   onDetect,
@@ -102,15 +194,15 @@ function CameraScanner({
       {status !== 'active' && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-900/95 px-8 text-center">
           {status === 'starting' ? (
-            <Loader2 className="h-6 w-6 animate-spin text-white/50" aria-label="Подключение камеры" />
+            <HqdLoader tone="light" className="py-0" />
           ) : (
-            <CameraOff className="h-7 w-7 text-white/40" />
+            <>
+              <CameraOff className="h-7 w-7 text-white/40" />
+              <p className="text-[12px] leading-relaxed text-white/55">
+                Камера недоступна — введи код вручную
+              </p>
+            </>
           )}
-          <p className="text-[12px] leading-relaxed text-white/55">
-            {status === 'starting'
-              ? 'Запрашиваем доступ к камере…'
-              : 'Камера недоступна — введи код вручную'}
-          </p>
         </div>
       )}
 
@@ -121,10 +213,6 @@ function CameraScanner({
         <span className="absolute bottom-0 left-0 h-7 w-7 rounded-bl-xl border-b-[3px] border-l-[3px] border-white/85" />
         <span className="absolute bottom-0 right-0 h-7 w-7 rounded-br-xl border-b-[3px] border-r-[3px] border-white/85" />
       </div>
-
-      <span className="absolute inset-x-0 bottom-3.5 mx-auto w-fit rounded-full bg-black/45 px-3 py-1 text-[10.5px] font-medium text-white/85 backdrop-blur-sm">
-        Честный знак · DataMatrix
-      </span>
     </div>
   );
 }
@@ -178,6 +266,9 @@ export function ScannerView() {
       <div className="glass rounded-[30px] p-2.5">
         <CameraScanner onDetect={(text) => void handleCode(text)} active={cameraActive} />
       </div>
+
+      {/* какой код сканировать — схематично */}
+      <WhereIsCodeHint />
 
       {scanError && (
         <div

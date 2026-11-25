@@ -17,7 +17,7 @@ import type {
 } from '@/lib/rewards/types';
 import { initTelegram } from '@/utils/telegram';
 
-export type View = 'scan' | 'quests' | 'wheel' | 'prizes' | 'chest';
+export type View = 'scan' | 'quests' | 'chests' | 'wheel' | 'prizes' | 'chest';
 
 export interface ScanSuccessInfo {
   flavorName: string;

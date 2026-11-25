@@ -5,17 +5,19 @@
 
 import { useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Disc3, Gift, Loader2, RotateCw, ScanLine, Sparkles, Target } from 'lucide-react';
+import { Disc3, Gift, Package, RotateCw, ScanLine, Sparkles, Target } from 'lucide-react';
 import { Toaster } from 'sonner';
 import { useRewardsStore, type View } from '@/store/useRewardsStore';
 import { ScannerView } from './ScannerView';
 import { QuestsView } from './QuestsView';
+import { ChestsView } from './ChestsView';
 import { WheelView } from './WheelView';
 import { PrizesView } from './PrizesView';
 import { ChestOpenView } from './ChestOpenView';
 import { ScanResultSheet } from './ScanResultSheet';
 import { ClaimSheet } from './ClaimSheet';
 import { AdminSheet } from './AdminSheet';
+import { HqdLoader } from './HqdLoader';
 
 function AppHeader() {
   const go = useRewardsStore((s) => s.go);
@@ -78,6 +80,7 @@ function AppHeader() {
 const NAV: { view: View; icon: typeof ScanLine; label: string }[] = [
   { view: 'scan', icon: ScanLine, label: 'Скан' },
   { view: 'quests', icon: Target, label: 'Задания' },
+  { view: 'chests', icon: Package, label: 'Сундуки' },
   { view: 'wheel', icon: Disc3, label: 'Колесо' },
   { view: 'prizes', icon: Gift, label: 'Призы' },
 ];
@@ -92,7 +95,7 @@ function BottomNav() {
   const prizesCount = state?.prizes.length ?? 0;
 
   const badgeFor = (v: View): number | null => {
-    if (v === 'quests') return unopenedChests;
+    if (v === 'chests') return unopenedChests;
     if (v === 'wheel') return spins;
     if (v === 'prizes') return prizesCount;
     return null;
@@ -105,7 +108,7 @@ function BottomNav() {
     >
       <div className="glass flex items-center justify-between gap-1 rounded-full p-1.5">
         {NAV.map(({ view: v, icon: Icon, label }) => {
-          const active = view === v || (v === 'quests' && view === 'chest');
+          const active = view === v || (v === 'chests' && view === 'chest');
           const badge = badgeFor(v);
           return (
             <button
@@ -166,12 +169,7 @@ export default function ClubApp() {
 
         <main className="flex-1 px-4 pb-24 pt-4">
           {!hydrated ? (
-            <div className="flex flex-col items-center justify-center gap-5 py-28">
-              <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 text-[13px] font-black tracking-tight text-white">
-                HQD
-              </span>
-              <Loader2 className="h-5 w-5 animate-spin text-slate-300" aria-label="Загрузка" />
-            </div>
+            <HqdLoader className="min-h-[60dvh]" />
           ) : (
             <AnimatePresence mode="wait">
               <motion.div
@@ -183,6 +181,7 @@ export default function ClubApp() {
               >
                 {view === 'scan' && <ScannerView />}
                 {view === 'quests' && <QuestsView />}
+                {view === 'chests' && <ChestsView />}
                 {view === 'wheel' && <WheelView />}
                 {view === 'prizes' && <PrizesView />}
                 {view === 'chest' && activeChestId && <ChestOpenView key={activeChestId} />}

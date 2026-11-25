@@ -6,7 +6,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-rubik);
+  --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -233,4 +233,135 @@
 .scroll-slim::-webkit-scrollbar-thumb {
   background: rgba(15, 23, 42, 0.18);
   border-radius: 999px;
+}
+
+/* Скрытый скроллбар (карусель сундуков) */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* ============ ЛОАДЕР «HQD ENERGY» ============ */
+/* Зацикленная волна по буквам: каждая буква вспыхивает с задержкой. */
+
+.loader-letter {
+  display: inline-block;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.32em;
+  animation: letter-wave 1.6s cubic-bezier(0.45, 0, 0.25, 1) infinite;
+  will-change: opacity, transform;
+}
+@keyframes letter-wave {
+  0%,
+  100% {
+    opacity: 0.14;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+  60% {
+    opacity: 1;
+  }
+}
+
+/* ============ СУНДУК В КАРТОЧКЕ ============ */
+/* Лёгкое парение иконки + мягкая пульсация свечения уровня. */
+
+.chest-float {
+  animation: chest-float 3.4s ease-in-out infinite;
+  will-change: transform;
+}
+@keyframes chest-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.chest-glow {
+  animation: chest-glow 3.4s ease-in-out infinite;
+}
+@keyframes chest-glow {
+  0%,
+  100% {
+    opacity: 0.14;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.26;
+    transform: scale(1.12);
+  }
+}
+
+/* ============ ИНФОГРАФИКА СКАНА ============ */
+/* Пульс уголков прицела вокруг кода на схеме банки. */
+
+.hint-pulse {
+  animation: hint-pulse 1.8s ease-in-out infinite;
+  transform-origin: center;
+  transform-box: fill-box;
+}
+@keyframes hint-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.14);
+  }
+}
+
+/* ============ КОЛЕСО ============ */
+/* Точки в центральной кнопке во время спина */
+
+.spin-dots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.spin-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: #fff;
+  animation: dot-bounce 0.9s ease-in-out infinite;
+}
+.spin-dots span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.spin-dots span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes dot-bounce {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+/* Стеклянный глянец поверх колеса (блик света, не вращается) */
+.wheel-gloss {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0) 42%),
+    radial-gradient(circle at 72% 88%, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0) 38%);
 }

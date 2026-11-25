@@ -1,14 +1,14 @@
 'use client';
 
-// Экран «Задания»: готовые сундуки сверху, компактные карточки заданий.
+// Экран «Задания»: компактные карточки заданий с прогрессом.
+// Сундуки за задания живут в отдельном разделе («Сундуки» в навигации).
 // Минимум текста — цифры и прогресс говорят сами.
 
-import { Check, ChevronRight, ScanLine } from 'lucide-react';
-import { CHEST_TIERS } from '@/lib/rewards/catalog';
+import { Check, ScanLine } from 'lucide-react';
 import type { QuestState } from '@/lib/rewards/types';
 import { useRewardsStore } from '@/store/useRewardsStore';
 import { cn } from '@/lib/utils';
-import { ChestIcon, ProgressBar, QUEST_ICONS, SectionTitle, TierChip } from './bits';
+import { ProgressBar, QUEST_ICONS, SectionTitle, TierChip } from './bits';
 
 function QuestCard({ quest }: { quest: QuestState }) {
   const Icon = QUEST_ICONS[quest.icon] ?? ScanLine;
@@ -61,49 +61,13 @@ function QuestCard({ quest }: { quest: QuestState }) {
 
 export function QuestsView() {
   const state = useRewardsStore((s) => s.state);
-  const go = useRewardsStore((s) => s.go);
-  const openChestView = useRewardsStore((s) => s.openChestView);
 
   if (!state) return null;
 
-  const unopened = state.chests.filter((c) => c.status === 'UNOPENED');
   const doneQuests = state.quests.filter((q) => q.completed).length;
 
   return (
     <div className="flex flex-col gap-4">
-      {/* сундуки, готовые к открытию */}
-      {unopened.length > 0 && (
-        <section aria-label="Сундуки" className="space-y-2.5">
-          {unopened.map((ch) => (
-            <button
-              key={ch.id}
-              type="button"
-              onClick={() => openChestView(ch.id)}
-              className="press glass flex w-full items-center gap-3.5 rounded-3xl p-4 text-left"
-            >
-              <span
-                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl"
-                style={{ background: CHEST_TIERS[ch.tier].soft }}
-              >
-                <ChestIcon tier={ch.tier} size={46} />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-[14.5px] font-semibold text-slate-900">
-                  {CHEST_TIERS[ch.tier].name}
-                </span>
-                <span className="mt-0.5 block truncate text-[12px] text-slate-400">
-                  За задание «{ch.questTitle}»
-                </span>
-              </span>
-              <span className="flex shrink-0 items-center gap-1 rounded-full bg-slate-900 px-3.5 py-2 text-[12px] font-semibold text-white">
-                Открыть
-                <ChevronRight size={14} />
-              </span>
-            </button>
-          ))}
-        </section>
-      )}
-
       {/* задания */}
       <section aria-label="Задания">
         <SectionTitle aside={`${doneQuests}/${state.quests.length}`}>Задания</SectionTitle>

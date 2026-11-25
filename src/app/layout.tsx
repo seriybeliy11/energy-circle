@@ -1,10 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { Rubik } from "next/font/google";
+import { Manrope } from "next/font/google";
 import "./globals.css";
 
-const rubik = Rubik({
+const manrope = Manrope({
   subsets: ["latin", "cyrillic"],
-  variable: "--font-rubik",
+  variable: "--font-manrope",
   display: "swap",
 });
 
@@ -34,7 +34,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ru" suppressHydrationWarning>
-      <body className={`${rubik.variable} antialiased`}>{children}</body>
+      <body className={`${manrope.variable} antialiased`}>{children}</body>
     </html>
   );
 }
