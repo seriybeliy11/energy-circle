@@ -5,12 +5,11 @@
 
 import { useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Disc3, Gift, Package, RotateCw, ScanLine, Sparkles, Target } from 'lucide-react';
+import { Disc3, Gift, RotateCw, ScanLine, Sparkles, Target } from 'lucide-react';
 import { Toaster } from 'sonner';
 import { useRewardsStore, type View } from '@/store/useRewardsStore';
 import { ScannerView } from './ScannerView';
 import { QuestsView } from './QuestsView';
-import { ChestsView } from './ChestsView';
 import { WheelView } from './WheelView';
 import { PrizesView } from './PrizesView';
 import { ChestOpenView } from './ChestOpenView';
@@ -77,10 +76,10 @@ function AppHeader() {
   );
 }
 
+// Один экран «Прогресс» объединяет задания и сундуки-награды за них.
 const NAV: { view: View; icon: typeof ScanLine; label: string }[] = [
   { view: 'scan', icon: ScanLine, label: 'Скан' },
-  { view: 'quests', icon: Target, label: 'Задания' },
-  { view: 'chests', icon: Package, label: 'Сундуки' },
+  { view: 'quests', icon: Target, label: 'Прогресс' },
   { view: 'wheel', icon: Disc3, label: 'Колесо' },
   { view: 'prizes', icon: Gift, label: 'Призы' },
 ];
@@ -95,7 +94,7 @@ function BottomNav() {
   const prizesCount = state?.prizes.length ?? 0;
 
   const badgeFor = (v: View): number | null => {
-    if (v === 'chests') return unopenedChests;
+    if (v === 'quests') return unopenedChests;
     if (v === 'wheel') return spins;
     if (v === 'prizes') return prizesCount;
     return null;
@@ -108,7 +107,7 @@ function BottomNav() {
     >
       <div className="glass flex items-center justify-between gap-1 rounded-full p-1.5">
         {NAV.map(({ view: v, icon: Icon, label }) => {
-          const active = view === v || (v === 'chests' && view === 'chest');
+          const active = view === v || (v === 'quests' && view === 'chest');
           const badge = badgeFor(v);
           return (
             <button
@@ -181,7 +180,6 @@ export default function ClubApp() {
               >
                 {view === 'scan' && <ScannerView />}
                 {view === 'quests' && <QuestsView />}
-                {view === 'chests' && <ChestsView />}
                 {view === 'wheel' && <WheelView />}
                 {view === 'prizes' && <PrizesView />}
                 {view === 'chest' && activeChestId && <ChestOpenView key={activeChestId} />}

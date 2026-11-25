@@ -45,12 +45,12 @@ export function ChestOpenView() {
   if (!chest) {
     return (
       <div className="flex flex-col gap-4">
-        <TopBar title="Сундук" onBack={() => go('chests')} />
+        <TopBar title="Сундук" onBack={() => go('quests')} />
         <div className="glass flex flex-col items-center rounded-[26px] px-6 py-10 text-center">
           <h2 className="text-[15px] font-semibold text-slate-800">Сундук не найден</h2>
           <button
             type="button"
-            onClick={() => go('chests')}
+            onClick={() => go('quests')}
             className="press mt-4 h-11 rounded-2xl bg-slate-900 px-5 text-[13px] font-semibold text-white"
           >
             К сундукам
@@ -79,7 +79,7 @@ export function ChestOpenView() {
 
   return (
     <div className="flex min-h-[calc(100dvh-190px)] flex-col gap-5">
-      <TopBar title="Сундук" onBack={() => go('chests')} />
+      <TopBar title="Сундук" onBack={() => go('quests')} />
 
       <div className="flex flex-1 flex-col items-center justify-center pb-2">
         <AnimatePresence mode="wait">

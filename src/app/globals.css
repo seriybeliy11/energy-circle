@@ -91,9 +91,11 @@
   }
   html {
     color-scheme: light;
+    overflow-x: clip;
   }
   body {
     @apply bg-background text-foreground font-sans antialiased;
+    overflow-x: clip;
     overscroll-behavior-y: none;
     -webkit-tap-highlight-color: transparent;
   }
