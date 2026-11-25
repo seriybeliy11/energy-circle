@@ -1,9 +1,12 @@
 'use client';
 
-// Единый экран «Прогресс»: сверху — лутбоксы (drag-карусель на framer-motion:
-// свайп с инерцией и пружинным до-подруливанием к центру, скроллбара нет),
+// Единый экран «Прогресс»: сверху — лутбоксы (drag-карусель на framer-motion),
 // ниже — компактные строки заданий с кольцевым прогрессом. Лутбокс — награда
 // за задание, поэтому обе части петли живут на одном экране.
+//
+// Карусель строго вписана в кадр приложения (Telegram Mini App): трек
+// full-bleed, обрезается по границам кадра (overflow-hidden) и мягко
+// затухает к краям; ширина карточки адаптируется под узкие экраны.
 
 import { useEffect, useRef, useState } from 'react';
 import { animate, motion, useMotionValue, type PanInfo } from 'framer-motion';
@@ -14,9 +17,10 @@ import { useRewardsStore } from '@/store/useRewardsStore';
 import { cn } from '@/lib/utils';
 import { ChestIcon, QUEST_ICONS, SectionTitle, TierChip } from './bits';
 
-const CARD_W = 272;
 const GAP = 16;
-const STEP = CARD_W + GAP;
+/** Диапазон ширины карточки лутбокса (px). */
+const CARD_MIN = 208;
+const CARD_MAX = 272;
 
 /* ============ КАРТОЧКА ЛУТБОКСА ============ */
 
@@ -24,14 +28,17 @@ function LootBoxCard({
   chest,
   index,
   active,
+  cardW,
   onTap,
 }: {
   chest: ChestState;
   index: number;
   active: boolean;
+  cardW: number;
   onTap: (i: number) => void;
 }) {
   const tier = CHEST_TIERS[chest.tier];
+  const iconSize = Math.round(Math.min(164, cardW * 0.62));
 
   return (
     <motion.div
@@ -39,7 +46,7 @@ function LootBoxCard({
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.05 + index * 0.06, type: 'spring', stiffness: 200, damping: 22 }}
       className="shrink-0 select-none"
-      style={{ width: CARD_W }}
+      style={{ width: cardW }}
     >
       <motion.button
         type="button"
@@ -49,16 +56,15 @@ function LootBoxCard({
         aria-label={`Открыть: ${tier.name}`}
         className="glass press relative flex h-[396px] w-full flex-col items-center overflow-hidden rounded-[32px] px-5 pb-5 pt-7 text-center"
       >
-        {/* мягкое свечение уровня */}
-        <span
-          className="chest-glow pointer-events-none absolute left-1/2 top-[88px] h-44 w-44 -translate-x-1/2 rounded-full blur-3xl"
-          style={{ background: tier.color }}
-          aria-hidden="true"
-        />
-
+        {/* мягкое свечение уровня — за иконкой, адаптируется под размер */}
         <span className="relative flex flex-1 items-center justify-center">
+          <span
+            className="chest-glow pointer-events-none absolute left-1/2 top-1/2 h-44 w-44 -translate-x-1/2 -translate-y-1/2 rounded-full blur-3xl"
+            style={{ background: tier.color }}
+            aria-hidden="true"
+          />
           <span className={cn('chest-float', !active && '[animation-play-state:paused]')}>
-            <ChestIcon tier={chest.tier} size={164} />
+            <ChestIcon tier={chest.tier} size={iconSize} />
           </span>
         </span>
 
@@ -77,7 +83,7 @@ function LootBoxCard({
   );
 }
 
-/* ============ КАРУСЕЛЬ (гладкий свайп без скроллбара) ============ */
+/* ============ КАРУСЕЛЬ (гладкий свайп, строго в кадре) ============ */
 
 function Carousel({ chests }: { chests: ChestState[] }) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -91,7 +97,7 @@ function Carousel({ chests }: { chests: ChestState[] }) {
   const initedRef = useRef(false);
   const dragEndAt = useRef(0);
 
-  // измеряем ширину контейнера
+  // измеряем ширину контейнера (full-bleed = ширина кадра приложения)
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
@@ -101,29 +107,38 @@ function Carousel({ chests }: { chests: ChestState[] }) {
     return () => ro.disconnect();
   }, []);
 
-  const baseX = wrapW > 0 ? (wrapW - CARD_W) / 2 : 0;
-  const minX = baseX - (chests.length - 1) * STEP;
-  const offsetFor = (i: number) => baseX - i * STEP;
+  // ширина карточки адаптируется под экран: на узких — компактнее
+  const cardW = Math.max(CARD_MIN, Math.min(CARD_MAX, wrapW - 96));
+  const step = cardW + GAP;
+  const baseX = wrapW > 0 ? (wrapW - cardW) / 2 : 0;
+  const minX = baseX - (chests.length - 1) * step;
+  const offsetFor = (i: number) => baseX - i * step;
 
-  // стартовая позиция: первый лутбокс по центру
+  // стартовая позиция и пересчёт при повороте экрана / ресайзе кадра
   useEffect(() => {
-    if (wrapW > 0 && !initedRef.current) {
+    if (wrapW <= 0) return;
+    const w = Math.max(CARD_MIN, Math.min(CARD_MAX, wrapW - 96));
+    const bx = (wrapW - w) / 2;
+    if (!initedRef.current) {
       initedRef.current = true;
-      x.set((wrapW - CARD_W) / 2);
+      x.set(bx);
+    } else {
+      // мгновенно до-ставим активную карточку в центр по новым меркам
+      x.set(bx - activeRef.current * (w + GAP));
     }
   }, [wrapW, x]);
 
   // активный — ближайший к центру во время жеста
   useEffect(() => {
     const unsub = x.on('change', (v) => {
-      const i = Math.max(0, Math.min(chests.length - 1, Math.round((baseX - v) / STEP)));
+      const i = Math.max(0, Math.min(chests.length - 1, Math.round((baseX - v) / step)));
       if (i !== activeRef.current) {
         activeRef.current = i;
         setActive(i);
       }
     });
     return unsub;
-  }, [baseX, chests.length, x]);
+  }, [baseX, step, chests.length, x]);
 
   const goTo = (i: number) => {
     const clamped = Math.max(0, Math.min(chests.length - 1, i));
@@ -136,7 +151,7 @@ function Carousel({ chests }: { chests: ChestState[] }) {
   const handleDragEnd = (_: unknown, info: PanInfo) => {
     dragEndAt.current = Date.now();
     const projected = x.get() + info.velocity.x * 0.22;
-    goTo(Math.round((baseX - projected) / STEP));
+    goTo(Math.round((baseX - projected) / step));
   };
 
   // тап: по соседней — подрулить, по активной — открыть
@@ -151,7 +166,16 @@ function Carousel({ chests }: { chests: ChestState[] }) {
 
   return (
     <div>
-      <div ref={wrapRef} className="relative overflow-visible py-4">
+      <div
+        ref={wrapRef}
+        className="-mx-4 overflow-hidden py-4"
+        style={{
+          WebkitMaskImage:
+            'linear-gradient(to right, transparent 0px, #000 24px, #000 calc(100% - 24px), transparent 100%)',
+          maskImage:
+            'linear-gradient(to right, transparent 0px, #000 24px, #000 calc(100% - 24px), transparent 100%)',
+        }}
+      >
         <motion.div
           drag="x"
           dragConstraints={{ left: minX, right: baseX }}
@@ -162,7 +186,14 @@ function Carousel({ chests }: { chests: ChestState[] }) {
           className="flex w-max cursor-grab items-center gap-4 active:cursor-grabbing"
         >
           {chests.map((ch, i) => (
-            <LootBoxCard key={ch.id} chest={ch} index={i} active={i === active} onTap={handleTap} />
+            <LootBoxCard
+              key={ch.id}
+              chest={ch}
+              index={i}
+              active={i === active}
+              cardW={cardW}
+              onTap={handleTap}
+            />
           ))}
         </motion.div>
       </div>

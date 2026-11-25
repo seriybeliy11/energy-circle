@@ -1,16 +1,16 @@
 'use client';
 
-// Экран «Колесо»: 1 скан = 1 спин. Свежие азартные механики:
-// near-miss («победа близка» — промах рядом с джекпотом), джекпот-бар с гарантией,
-// золотой спин x2, pity (два промаха подряд — без промаха), билеты в розыгрыш.
-// Колесо — крупное, по центру экрана, в стеклянном стиле; прокрутка с лёгким
-// 3D-эффектом (наклон-«взлёт» с затухающим покачиванием) и щелчком стрелки.
+// Экран «Колесо»: 1 скан = 1 спин. Механики: near-miss, джекпот-бар
+// с гарантией, золотой спин x2, pity, билеты в розыгрыш.
+//
+// Визуал — серебряный металл, минимализм: полированный обод, чередование
+// двух тонов металла, графитовый сектор джекпота. Лёгкое 3D: постоянный
+// наклон плоскости колеса (perspective) и плавный пружинный scale на время
+// спина. Никаких лишних анимаций — только гладкость.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import confetti from 'canvas-confetti';
 import { toast } from 'sonner';
-import { HypnosisCanvas } from './HypnosisCanvas';
 import {
   ChevronRight,
   Crown,
@@ -33,7 +33,7 @@ import { Drawer, DrawerContent, DrawerDescription, DrawerTitle } from '@/compone
 const SPIN_DURATION_MS = 5000;
 const TICK_COUNT = 26;
 
-/* ============ SVG-КОЛЕСО (стеклянный pure-дизайн) ============ */
+/* ============ SVG-КОЛЕСО (серебряный металл) ============ */
 
 function polar(cx: number, cy: number, r: number, angleDeg: number) {
   const rad = ((angleDeg - 90) * Math.PI) / 180;
@@ -47,23 +47,6 @@ function segmentPath(cx: number, cy: number, r: number, start: number, end: numb
   return `M ${cx} ${cy} L ${p1.x} ${p1.y} A ${r} ${r} 0 ${large} 1 ${p2.x} ${p2.y} Z`;
 }
 
-/** Сектор-кольцо (для бегущего по ободу блика). */
-function ringSectorPath(
-  cx: number,
-  cy: number,
-  rOuter: number,
-  rInner: number,
-  start: number,
-  end: number,
-) {
-  const p1 = polar(cx, cy, rOuter, start);
-  const p2 = polar(cx, cy, rOuter, end);
-  const p3 = polar(cx, cy, rInner, end);
-  const p4 = polar(cx, cy, rInner, start);
-  const large = end - start > 180 ? 1 : 0;
-  return `M ${p1.x} ${p1.y} A ${rOuter} ${rOuter} 0 ${large} 1 ${p2.x} ${p2.y} L ${p3.x} ${p3.y} A ${rInner} ${rInner} 0 ${large} 0 ${p4.x} ${p4.y} Z`;
-}
-
 function WheelSvg({ segments }: { segments: WheelSegmentState[] }) {
   const c = 180;
   const r = 172;
@@ -72,74 +55,53 @@ function WheelSvg({ segments }: { segments: WheelSegmentState[] }) {
   return (
     <svg viewBox="0 0 360 360" className="h-full w-full" role="img" aria-label="Колесо призов">
       <defs>
-        <linearGradient id="jackpotGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#e8a92c" />
-          <stop offset="100%" stopColor="#f8d472" />
+        {/* серебро: два чередующихся тона металла, свет сверху */}
+        <linearGradient id="silverLight" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#ffffff" />
+          <stop offset="100%" stopColor="#dbe2ea" />
         </linearGradient>
-        {/* хром-градиенты лепестков: металлические полосы вдоль радиуса */}
-        {segments.map((s, i) => {
-          const mid = i * segAngle + segAngle / 2;
-          const p1 = polar(c, c, r * 0.34, mid);
-          const p2 = polar(c, c, r - 9, mid);
-          return (
-            <linearGradient
-              key={s.id}
-              id={`chrome-${s.id}`}
-              gradientUnits="userSpaceOnUse"
-              x1={p1.x}
-              y1={p1.y}
-              x2={p2.x}
-              y2={p2.y}
-            >
-              <stop offset="0%" stopColor="#ffffff" stopOpacity="0" />
-              <stop offset="14%" stopColor="#ffffff" stopOpacity="0.75" />
-              <stop offset="34%" stopColor="#2f4258" stopOpacity="0.6" />
-              <stop offset="52%" stopColor="#ffffff" stopOpacity="0.5" />
-              <stop offset="70%" stopColor="#384c63" stopOpacity="0.56" />
-              <stop offset="86%" stopColor="#ffffff" stopOpacity="0.78" />
-              <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
-            </linearGradient>
-          );
-        })}
-        {/* мягкий градиент бегущего блика */}
-        <linearGradient id="sweepGrad" gradientUnits="userSpaceOnUse" x1="110" y1="0" x2="250" y2="0">
-          <stop offset="0%" stopColor="#ffffff" stopOpacity="0" />
-          <stop offset="50%" stopColor="#ffffff" stopOpacity="0.55" />
-          <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+        <linearGradient id="silverDark" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#edf1f6" />
+          <stop offset="100%" stopColor="#c3ccd8" />
+        </linearGradient>
+        {/* джекпот — графит с золотой маркировкой */}
+        <linearGradient id="graphiteGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#3c4859" />
+          <stop offset="100%" stopColor="#1c2430" />
+        </linearGradient>
+        {/* полированный обод */}
+        <linearGradient id="rimGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#f5f8fb" />
+          <stop offset="42%" stopColor="#b6c0cc" />
+          <stop offset="68%" stopColor="#e9edf2" />
+          <stop offset="100%" stopColor="#aab5c3" />
         </linearGradient>
       </defs>
 
-      {/* стеклянное основание */}
-      <circle cx={c} cy={c} r={r} fill="#ffffff" opacity={0.4} />
+      {/* серебряное основание */}
+      <circle cx={c} cy={c} r={r} fill="url(#silverLight)" />
 
       {segments.map((s, i) => {
         const start = i * segAngle;
         const end = start + segAngle;
         const mid = start + segAngle / 2;
         const isJackpot = s.kind === 'JACKPOT';
-        // стеклянные сектора: чередуем прозрачность для лёгкого разделения
-        const fillOpacity = isJackpot ? 1 : i % 2 === 0 ? 0.55 : 0.28;
-        const fill = isJackpot ? 'url(#jackpotGrad)' : s.color;
-        const textColor = isJackpot ? '#ffffff' : s.kind === 'EMPTY' ? '#8a94a8' : '#0f172a';
+        const fill = isJackpot
+          ? 'url(#graphiteGrad)'
+          : i % 2 === 0
+            ? 'url(#silverLight)'
+            : 'url(#silverDark)';
+        const textColor = isJackpot ? '#e3b45c' : s.kind === 'EMPTY' ? '#94a0b0' : '#28323f';
         const d = segmentPath(c, c, r - 9, start, end);
 
         return (
           <g key={s.id}>
-            {/* база */}
             <path
               d={d}
               fill={fill}
-              fillOpacity={fillOpacity}
               stroke="#ffffff"
               strokeWidth={2.5}
               strokeLinejoin="round"
-            />
-            {/* хром-налёт с бегущим по кругу блиском */}
-            <path
-              d={d}
-              fill={`url(#chrome-${s.id})`}
-              className="petal-shimmer"
-              style={{ animationDelay: `${i * 0.22}s` }}
             />
             <g transform={`rotate(${mid} ${c} ${c})`}>
               <text
@@ -159,7 +121,7 @@ function WheelSvg({ segments }: { segments: WheelSegmentState[] }) {
                 fontSize={8}
                 fontWeight={700}
                 fill={textColor}
-                opacity={isJackpot ? 1 : 0.85}
+                opacity={isJackpot ? 0.95 : 0.8}
                 style={{ letterSpacing: '0.07em' }}
               >
                 {s.labelSub.toUpperCase()}
@@ -169,42 +131,22 @@ function WheelSvg({ segments }: { segments: WheelSegmentState[] }) {
         );
       })}
 
-      {/* бегущий по ободу хром-блик (SMIL — чистый SVG, без JS) */}
-      <g opacity="0.5">
-        <path d={ringSectorPath(c, c, r - 10, r - 46, -20, 22)} fill="url(#sweepGrad)" />
-        <animateTransform
-          attributeName="transform"
-          type="rotate"
-          from="0 180 180"
-          to="360 180 180"
-          dur="9s"
-          repeatCount="indefinite"
-        />
-      </g>
-
-      {/* внутреннее тонкое кольцо */}
+      {/* внутренняя проточка у ступицы */}
       <circle
         cx={c}
         cy={c}
         r={r - 78}
         fill="none"
-        stroke="#ffffff"
-        strokeOpacity={0.9}
+        stroke="rgba(15, 23, 42, 0.14)"
         strokeWidth={1.5}
       />
 
-      {/* внешнее стеклянное кольцо */}
-      <circle
-        cx={c}
-        cy={c}
-        r={r - 4.5}
-        fill="none"
-        stroke="#ffffff"
-        strokeWidth={9}
-        strokeOpacity={0.96}
-      />
+      {/* полированный обод */}
+      <circle cx={c} cy={c} r={r - 4.5} fill="none" stroke="url(#rimGrad)" strokeWidth={9} />
+      {/* тонкий тёмный кантик по внешнему краю */}
+      <circle cx={c} cy={c} r={r - 0.5} fill="none" stroke="rgba(15, 23, 42, 0.2)" strokeWidth={1} />
 
-      {/* штырьки-разделители на кольце */}
+      {/* штифты-клёпки на ободе */}
       {segments.map((s, i) => {
         const p = polar(c, c, r - 12, i * segAngle);
         return (
@@ -212,9 +154,9 @@ function WheelSvg({ segments }: { segments: WheelSegmentState[] }) {
             key={`peg-${s.id}`}
             cx={p.x}
             cy={p.y}
-            r={3.4}
-            fill="#ffffff"
-            stroke="rgba(15, 23, 42, 0.16)"
+            r={3.2}
+            fill="#f7fafc"
+            stroke="rgba(15, 23, 42, 0.28)"
             strokeWidth={1}
           />
         );
@@ -391,8 +333,6 @@ export function WheelView() {
   const [spinning, setSpinning] = useState(false);
   const [result, setResult] = useState<SpinOkResponse | null>(null);
   const timersRef = useRef<number[]>([]);
-  // сигнал интенсивности гипно-спирали: 0 — покой, 1 — трип во время спина
-  const hypRef = useRef(0);
 
   // Чистим таймеры тиков при размонтировании вкладки
   useEffect(() => {
@@ -419,18 +359,16 @@ export function WheelView() {
     }
     setSpinning(true);
     setResult(null);
-    hypRef.current = 1;
     haptic('light');
 
     const json = await spinWheelAction();
     if (!json || !json.ok) {
       setSpinning(false);
-      hypRef.current = 0;
       toast.error(!json ? ERROR_TEXT.SERVER_ERROR : ERROR_TEXT[json.error]);
       return;
     }
 
-    // --- анимация посадки на landIndex с near-miss-смещением ---
+    // --- плавная посадка на landIndex с near-miss-смещением ---
     const n = segments.length;
     const segAngle = 360 / n;
     const jackpotIndex = segments.findIndex((s) => s.kind === 'JACKPOT');
@@ -460,19 +398,9 @@ export function WheelView() {
     timersRef.current.push(
       window.setTimeout(() => {
         setSpinning(false);
-        hypRef.current = 0;
         if (json.kind === 'JACKPOT') {
           sound.jackpot();
           haptic('success');
-          void confetti({
-            particleCount: 80,
-            spread: 80,
-            origin: { y: 0.4 },
-            colors: ['#f2b632', '#f8d472', '#ffffff', '#cf9f3d'],
-            ticks: 200,
-            scalar: 0.9,
-            disableForReducedMotion: true,
-          });
         } else if (json.prize) {
           sound.win();
           haptic('success');
@@ -515,116 +443,88 @@ export function WheelView() {
         )}
       </div>
 
-      {/* колесо — по центру оставшейся высоты, за ним гипно-спираль */}
+      {/* колесо — серебряный диск в лёгком 3D-наклоне */}
       <div className="flex flex-1 items-center justify-center py-3">
-        <div className="relative w-full max-w-[372px]" style={{ perspective: '1100px' }}>
-          {/* гипнотический триппи-фон чистым JS (canvas), края мягко затухают */}
-          <div className="pointer-events-none absolute -inset-12" aria-hidden="true">
-            <HypnosisCanvas
-              intensityRef={hypRef}
-              colorA="15, 23, 42"
-              colorB="124, 108, 220"
-              style={{
-                WebkitMaskImage: 'radial-gradient(circle at 50% 50%, #000 0 68%, transparent 94%)',
-                maskImage: 'radial-gradient(circle at 50% 50%, #000 0 68%, transparent 94%)',
-              }}
-            />
-          </div>
-          {/* стрелка со «щелчком» на старте */}
-          <motion.div
-            className="absolute -top-2.5 left-1/2 z-20 -translate-x-1/2"
-            style={{ transformOrigin: '50% 85%' }}
-            animate={spinning ? 'kick' : 'idle'}
-            variants={{
-              idle: { rotate: 0 },
-              kick: {
-                rotate: [0, -17, 7, 0],
-                transition: { duration: 0.55, ease: 'easeOut' },
-              },
-            }}
-            aria-hidden="true"
-          >
-            <svg width="36" height="26" viewBox="0 0 34 24">
-              <path
-                d="M3 3 L17 20 L31 3"
-                fill="#0f172a"
-                stroke="#ffffff"
-                strokeWidth="3.5"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </motion.div>
-
-          {/* 3D-обёртка: «взлёт» с наклоном и затухающим покачиванием */}
+        <div className="relative mx-auto w-full max-w-[358px]" style={{ perspective: '1200px' }}>
+          {/* 3D-плоскость: постоянный наклон + плавный scale на время спина */}
           <motion.div
             className="relative"
-            style={{ transformStyle: 'preserve-3d' }}
-            animate={spinning ? 'spin' : 'idle'}
-            variants={{
-              idle: { rotateX: 0, scale: 1 },
-              spin: {
-                rotateX: [0, 13, -7, 3.5, -1.5, 0],
-                scale: [1, 1.055, 1.025, 1.008, 1, 1],
-                transition: {
-                  duration: SPIN_DURATION_MS / 1000,
-                  times: [0, 0.1, 0.32, 0.58, 0.8, 1],
-                  ease: 'easeOut',
-                },
-              },
-            }}
+            style={{ rotateX: 12, transformStyle: 'preserve-3d' }}
+            animate={{ scale: spinning ? 1.02 : 1 }}
+            transition={{ type: 'spring', stiffness: 130, damping: 21 }}
           >
+            {/* вращающийся диск */}
             <div
-              className="glass rounded-full p-3"
+              className="rounded-full border border-white bg-white/85 p-3 shadow-[0_36px_64px_-28px_rgba(15,23,42,0.45)]"
               style={{
                 transform: `rotate(${rotation}deg)`,
-                transition: `transform ${SPIN_DURATION_MS}ms cubic-bezier(0.1, 0.8, 0.05, 1)`,
+                transition: `transform ${SPIN_DURATION_MS}ms cubic-bezier(0.12, 0.8, 0.06, 1)`,
               }}
             >
               <WheelSvg segments={segments} />
             </div>
 
-            {/* стеклянный блик поверх (не вращается) */}
+            {/* статичный блик света поверх (не вращается) */}
             <span className="wheel-gloss" aria-hidden="true" />
-          </motion.div>
 
-          {/* центральная кнопка */}
-          <button
-            type="button"
-            onClick={() => void spin()}
-            disabled={spinning}
-            aria-label={
-              totalSpins > 0
-                ? `Крутить колесо, спинов: ${totalSpins}`
-                : 'Спинов нет — сканировать банку'
-            }
-            className={cn(
-              'press absolute left-1/2 top-1/2 z-10 flex h-[96px] w-[96px] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border-[4px] border-white shadow-xl',
-              player.goldenSpins > 0 ? 'bg-amber-500 text-white' : 'bg-slate-900 text-white',
-            )}
-          >
-            {spinning ? (
-              <span className="spin-dots" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-              </span>
-            ) : totalSpins <= 0 ? (
-              <>
-                <ScanLine size={21} />
-                <span className="mt-1 text-[10px] font-bold uppercase tracking-wider opacity-80">
-                  Скан
-                </span>
-              </>
-            ) : (
-              <>
-                <span className="text-[13px] font-extrabold tracking-wide">КРУТИТЬ</span>
-                <span className="mt-1 flex items-center gap-1 text-[12px] font-semibold tabular-nums text-white/75">
-                  <RotateCw size={11} />
-                  {totalSpins}
-                </span>
-              </>
-            )}
-          </button>
+            {/* стрелка — на плоскости, чуть над диском */}
+            <div
+              className="absolute -top-2 left-1/2 z-20"
+              style={{ transform: 'translateX(-50%) translateZ(26px)' }}
+              aria-hidden="true"
+            >
+              <svg width="34" height="24" viewBox="0 0 34 24">
+                <path
+                  d="M4 3 L17 20 L30 3 Z"
+                  fill="#101827"
+                  stroke="#ffffff"
+                  strokeWidth="3"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </div>
+
+            {/* ступица — тёмный хаб в серебряном безеле, приподнят над плоскостью */}
+            <button
+              type="button"
+              onClick={() => void spin()}
+              disabled={spinning}
+              aria-label={
+                totalSpins > 0
+                  ? `Крутить колесо, спинов: ${totalSpins}`
+                  : 'Спинов нет — сканировать банку'
+              }
+              className="press absolute left-1/2 top-1/2 z-10 flex h-[94px] w-[94px] flex-col items-center justify-center rounded-full text-white"
+              style={{
+                transform: 'translate(-50%, -50%) translateZ(24px)',
+                background:
+                  player.goldenSpins > 0
+                    ? 'linear-gradient(180deg, #d99a1e, #a96d06)'
+                    : 'linear-gradient(180deg, #1e2836, #0c131f)',
+                boxShadow:
+                  '0 0 0 5px rgba(255,255,255,0.96), 0 0 0 6px rgba(15,23,42,0.14), 0 14px 28px -10px rgba(15,23,42,0.6)',
+              }}
+            >
+              {spinning ? (
+                <span className="hub-spinner" aria-hidden="true" />
+              ) : totalSpins <= 0 ? (
+                <>
+                  <ScanLine size={21} />
+                  <span className="mt-1 text-[10px] font-bold uppercase tracking-wider opacity-80">
+                    Скан
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="text-[13px] font-extrabold tracking-wide">КРУТИТЬ</span>
+                  <span className="mt-1 flex items-center gap-1 text-[12px] font-semibold tabular-nums text-white/75">
+                    <RotateCw size={11} />
+                    {totalSpins}
+                  </span>
+                </>
+              )}
+            </button>
+          </motion.div>
         </div>
       </div>
 

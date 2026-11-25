@@ -47,6 +47,8 @@ interface RewardsStore {
   view: View;
   activeChestId: string | null;
   claimPrizeId: string | null;
+  /** id призов, которые игрок уже видел в инвентаре (для метки NEW). */
+  seenPrizeIds: string[];
   adminOpen: boolean;
   scanSuccess: ScanSuccessInfo | null;
   scanError: string | null;
@@ -63,6 +65,7 @@ interface RewardsStore {
   go: (view: View) => void;
   openChestView: (chestId: string) => void;
   openClaim: (prizeId: string) => void;
+  markPrizesSeen: (ids: string[]) => void;
   setClaimPrize: (prizeId: string | null) => void;
   setAdminOpen: (open: boolean) => void;
   clearScanFeedback: () => void;
@@ -93,6 +96,7 @@ export const useRewardsStore = create<RewardsStore>()(
       view: 'scan',
       activeChestId: null,
       claimPrizeId: null,
+      seenPrizeIds: [],
       adminOpen: false,
       scanSuccess: null,
       scanError: null,
@@ -220,13 +224,18 @@ export const useRewardsStore = create<RewardsStore>()(
       go: (view) => set({ view, scanSuccess: null, scanError: null }),
       openChestView: (chestId) => set({ view: 'chest', activeChestId: chestId }),
       openClaim: (prizeId) => set({ claimPrizeId: prizeId }),
+      markPrizesSeen: (ids) =>
+        set((s) => ({
+          seenPrizeIds: Array.from(new Set([...s.seenPrizeIds, ...ids])).slice(-300),
+        })),
       setClaimPrize: (prizeId) => set({ claimPrizeId: prizeId }),
       setAdminOpen: (open) => set({ adminOpen: open }),
       clearScanFeedback: () => set({ scanSuccess: null, scanError: null }),
     }),
     {
       name: 'hqd-club-player',
-      partialize: (s) => ({ playerId: s.playerId }) as RewardsStore,
+      partialize: (s) =>
+        ({ playerId: s.playerId, seenPrizeIds: s.seenPrizeIds }) as RewardsStore,
     },
   ),
 );

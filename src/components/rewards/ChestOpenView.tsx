@@ -89,8 +89,8 @@ export function ChestOpenView() {
       <TopBar title="Лутбокс" onBack={() => go('quests')} />
 
       <div className="relative flex flex-1 flex-col items-center justify-center pb-2">
-        {/* гипнотическая спираль за лутбоксом (чистый JS) */}
-        <div className="pointer-events-none absolute inset-x-[-60px] top-1/2 h-[560px] -translate-y-1/2" aria-hidden="true">
+        {/* гипнотическая спираль за лутбоксом (чистый JS), строго в кадре */}
+        <div className="pointer-events-none absolute inset-x-0 top-1/2 h-[560px] -translate-y-1/2" aria-hidden="true">
           <HypnosisCanvas
             intensityRef={hypRef}
             colorA="15, 23, 42"

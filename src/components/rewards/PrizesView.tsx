@@ -1,16 +1,17 @@
 'use client';
 
-// Экран «Призы»: сверху — 3D железная клетка Фарадея (стоит на углу,
-// внутри лежат иконки потенциальных призов), ниже — карточка активного
-// розыгрыша с обратным отсчётом и список выигранных подарков.
+// Экран «Призы»: сверху — карточка главного розыгрыша с обратным отсчётом,
+// под ней — Инвентарь: все призы игрока. Появление отработано: предметы
+// въезжают каскадом на пружинах, свежие (ещё не просмотренные) помечены
+// NEW, добавление нового приза плавно вставляется в список.
 
-import { useEffect, useState } from 'react';
-import { ChevronRight, Crown, Disc3, Gift, Ticket } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { ChevronRight, Crown, Disc3, Gift, PackageOpen, Ticket } from 'lucide-react';
 import { CHEST_TIERS } from '@/lib/rewards/catalog';
-import type { PrizeSource } from '@/lib/rewards/types';
+import type { PrizeSource, PrizeState } from '@/lib/rewards/types';
 import { useRewardsStore } from '@/store/useRewardsStore';
-import { plural } from './bits';
-import { FaradayCage } from './FaradayCage';
+import { formatRub, plural, SectionTitle } from './bits';
 
 const SOURCE_ICON: Record<PrizeSource, { icon: typeof Gift; label: string }> = {
   CHEST: { icon: Gift, label: 'Лутбокс' },
@@ -100,85 +101,156 @@ function RaffleCard() {
   );
 }
 
+/* ============ ПРЕДМЕТ ИНВЕНТАРЯ ============ */
+
+function InventoryItem({
+  prize,
+  index,
+  isNew,
+  onOpen,
+}: {
+  prize: PrizeState;
+  index: number;
+  isNew: boolean;
+  onOpen: () => void;
+}) {
+  const tier = CHEST_TIERS[prize.tier];
+  const src = SOURCE_ICON[prize.source] ?? SOURCE_ICON.CHEST;
+  const SrcIcon = src.icon;
+  const expired = new Date(prize.expiresAt).getTime() < Date.now();
+
+  return (
+    <motion.button
+      layout
+      type="button"
+      onClick={onOpen}
+      initial={{ opacity: 0, y: 18, scale: 0.96 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.94 }}
+      transition={{
+        type: 'spring',
+        stiffness: 260,
+        damping: 24,
+        delay: Math.min(index * 0.055, 0.45),
+      }}
+      className="press glass flex w-full items-center gap-3.5 rounded-3xl p-4 text-left"
+    >
+      <span
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
+        style={{ background: tier.soft }}
+      >
+        <SrcIcon size={19} style={{ color: tier.color }} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-2">
+          <span className="truncate text-[14px] font-semibold text-slate-900">{prize.title}</span>
+          {isNew && !expired && (
+            <motion.span
+              initial={{ scale: 0.6, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 20, delay: 0.15 }}
+              className="shrink-0 rounded-full bg-rose-500/10 px-1.5 py-0.5 text-[9.5px] font-extrabold tracking-wider text-rose-500"
+            >
+              NEW
+            </motion.span>
+          )}
+        </span>
+        <span className="mt-0.5 block truncate text-[11.5px] text-slate-400">
+          {src.label} · {prize.partnerName}
+        </span>
+      </span>
+      {prize.valueRub != null && (
+        <span className="shrink-0 text-[12.5px] font-bold tabular-nums text-slate-700">
+          {formatRub(prize.valueRub)}
+        </span>
+      )}
+      {expired ? (
+        <span className="shrink-0 rounded-full bg-slate-900/5 px-2.5 py-1 text-[10.5px] font-semibold text-slate-400">
+          Истёк
+        </span>
+      ) : (
+        <ChevronRight size={17} className="shrink-0 text-slate-300" />
+      )}
+    </motion.button>
+  );
+}
+
+/* ============ ЭКРАН ============ */
+
 export function PrizesView() {
   const state = useRewardsStore((s) => s.state);
   const go = useRewardsStore((s) => s.go);
   const openClaim = useRewardsStore((s) => s.openClaim);
+  const seenIds = useRewardsStore((s) => s.seenPrizeIds);
+  const markPrizesSeen = useRewardsStore((s) => s.markPrizesSeen);
+
+  // инвентарь: свежие призы сверху
+  const prizes = useMemo(
+    () =>
+      state
+        ? [...state.prizes].sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
+        : [],
+    [state],
+  );
+
+  // непросмотренные показываем с меткой NEW пару секунд, затем отмечаем
+  useEffect(() => {
+    if (prizes.length === 0) return;
+    if (!prizes.some((p) => !seenIds.includes(p.id))) return;
+    const t = window.setTimeout(
+      () => markPrizesSeen(prizes.map((p) => p.id)),
+      2600,
+    );
+    return () => window.clearTimeout(t);
+  }, [prizes, seenIds, markPrizesSeen]);
 
   if (!state) return null;
 
   return (
     <div className="flex flex-col gap-4">
-      {/* потенциальные призы — в железной клетке Фарадея */}
-      <section aria-label="Потенциальные призы" className="glass relative overflow-hidden rounded-[26px] pb-4 pt-5">
-        <span
-          className="pointer-events-none absolute left-1/2 top-10 h-40 w-40 -translate-x-1/2 rounded-full bg-violet-200/40 blur-3xl"
-          aria-hidden="true"
-        />
-        <FaradayCage />
-        <div className="relative text-center">
-          <h2 className="text-[15px] font-semibold text-slate-900">Что внутри</h2>
-          <p className="mt-0.5 text-[11.5px] text-slate-400">Банки, мерч, билеты и джекпот</p>
-        </div>
-      </section>
-
       {state.raffle && <RaffleCard />}
 
-      {state.prizes.length === 0 ? (
-        <div className="glass flex flex-col items-center rounded-[26px] px-6 py-12 text-center">
-          <span className="flex h-16 w-16 items-center justify-center rounded-3xl bg-slate-900/5 text-slate-300">
-            <Gift size={28} />
-          </span>
-          <h2 className="mt-4 text-[15.5px] font-semibold text-slate-800">Призов пока нет</h2>
-          <p className="mt-1 text-[12.5px] text-slate-400">Открой лутбокс или крути колесо</p>
-          <button
-            type="button"
-            onClick={() => go('scan')}
-            className="press mt-5 h-12 rounded-2xl bg-slate-900 px-6 text-[13.5px] font-semibold text-white"
-          >
-            Сканировать банку
-          </button>
-        </div>
-      ) : (
-        <div className="space-y-2.5">
-          {state.prizes.map((p) => {
-            const tier = CHEST_TIERS[p.tier];
-            const src = SOURCE_ICON[p.source] ?? SOURCE_ICON.CHEST;
-            const SrcIcon = src.icon;
-            const expired = new Date(p.expiresAt).getTime() < Date.now();
-            return (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => openClaim(p.id)}
-                className="press glass flex w-full items-center gap-3.5 rounded-3xl p-4 text-left"
-              >
-                <span
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl"
-                  style={{ background: tier.soft }}
-                >
-                  <SrcIcon size={19} style={{ color: tier.color }} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[14px] font-semibold text-slate-900">
-                    {p.title}
-                  </span>
-                  <span className="mt-0.5 block truncate text-[11.5px] text-slate-400">
-                    {src.label} · {p.partnerName}
-                  </span>
-                </span>
-                {expired ? (
-                  <span className="shrink-0 rounded-full bg-slate-900/5 px-2.5 py-1 text-[10.5px] font-semibold text-slate-400">
-                    Истёк
-                  </span>
-                ) : (
-                  <ChevronRight size={17} className="shrink-0 text-slate-300" />
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {/* инвентарь — все призы игрока */}
+      <section aria-label="Инвентарь">
+        <SectionTitle aside={prizes.length > 0 ? `${prizes.length}` : undefined}>
+          Инвентарь
+        </SectionTitle>
+
+        {prizes.length === 0 ? (
+          <div className="glass mt-2.5 flex flex-col items-center rounded-[26px] px-6 py-12 text-center">
+            <span className="flex h-16 w-16 items-center justify-center rounded-3xl bg-slate-900/5 text-slate-300">
+              <PackageOpen size={28} />
+            </span>
+            <h2 className="mt-4 text-[15.5px] font-semibold text-slate-800">
+              В инвентаре пусто
+            </h2>
+            <p className="mt-1 text-[12.5px] text-slate-400">
+              Открой лутбокс или крути колесо
+            </p>
+            <button
+              type="button"
+              onClick={() => go('scan')}
+              className="press mt-5 h-12 rounded-2xl bg-slate-900 px-6 text-[13.5px] font-semibold text-white"
+            >
+              Сканировать банку
+            </button>
+          </div>
+        ) : (
+          <motion.div layout className="mt-2.5 flex flex-col gap-2.5">
+            <AnimatePresence initial={false}>
+              {prizes.map((p, i) => (
+                <InventoryItem
+                  key={p.id}
+                  prize={p}
+                  index={i}
+                  isNew={!seenIds.includes(p.id)}
+                  onOpen={() => openClaim(p.id)}
+                />
+              ))}
+            </AnimatePresence>
+          </motion.div>
+        )}
+      </section>
     </div>
   );
 }
